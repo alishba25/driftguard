@@ -15,10 +15,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 SEED = 42  # fixed so every run gives the same split and the same numbers
 
-NUMERIC = ["age", "education-num", "capital-gain", "capital-loss", "hours-per-week"]
-CATEGORICAL = ["workclass", "marital-status", "occupation", "relationship",
-               "race", "sex", "native-country"]
-TARGET = "income"
+from driftguard.config import CATEGORICAL, NUMERIC, TARGET
 
 # ---- 1. Load data and make the target a 0/1 number ----
 df = pd.read_csv("data/processed/adult_clean.csv")
