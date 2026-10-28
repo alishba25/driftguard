@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# DriftGuard: never commit data, models or secrets
+data/
+models/
+.env
