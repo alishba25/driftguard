@@ -27,3 +27,11 @@ TRAIN_PATH = Path("data/splits/train.csv")
 SCHEMA_PATH = Path("reports/reference_schema.json")
 REJECTED_DIR = Path("data/rejected")
 LOG_PATH = Path("logs/pipeline.log")
+
+
+# ---- Drift detection (Phase 3) ----
+REFERENCE_PATH = TRAIN_PATH      # the model's training data is the "normal" we compare against
+DRIFT_ALPHA = 0.05               # overall false-alarm budget per batch
+DRIFT_CORRECTION = "bonferroni"  # split that budget across features ("none" to switch off)
+RARE_CATEGORY_SHARE = 0.01       # categories under 1% of reference are grouped as "__other__"
+QUALITY_ALERT_RATE = 0.01        # alert if more than 1% of a batch's rows are rejected
