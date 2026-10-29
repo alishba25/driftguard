@@ -64,3 +64,6 @@ Logistic regression, seed 42, evaluated on a 20% stratified test split.
     pip install -e .
     python scripts/compare_evidently.py data/batches/batch_001.csv
 
+## How to run (Phase 4)
+    python experiments/run_experiments.py    # Phase 4: main experiment (3-5 min)
+    python experiments/summarize.py          # Phase 4: results tables
