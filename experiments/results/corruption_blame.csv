@@ -1,0 +1,7 @@
+strategy,said,batches
+drift-only,distribution changed in: sex,37
+drift-only,distribution changed in: marital-status;sex,1
+drift-only,distribution changed in: occupation;sex;native-country,1
+drift-only,distribution changed in: occupation;sex,1
+combined,quality problem,40
+combined,also drift in valid rows,3
