@@ -225,3 +225,5 @@ models/
 .env
 
 logs/
+.venv-evidently/
+reports/evidently/
