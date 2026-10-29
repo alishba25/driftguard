@@ -5,6 +5,7 @@ from pathlib import Path
 
 from driftguard import config
 from driftguard.alerts import make_alerts
+from driftguard.evaluation import evaluate, load_model
 from driftguard.ingestion import make_batch_id, read_batch
 from driftguard.monitoring import detect_drift, load_reference
 from driftguard.schema import load_schema
@@ -23,7 +24,7 @@ def setup_logging() -> None:
     )
 
 
-def run_batch(path: Path, engine, schema: dict, reference) -> dict:
+def run_batch(path: Path, engine, schema: dict, reference, model) -> dict:
     batch_id = make_batch_id(path)
     log.info("Batch %s: reading %s", batch_id, path)
     df = read_batch(path)
@@ -49,7 +50,15 @@ def run_batch(path: Path, engine, schema: dict, reference) -> dict:
     drift_results = detect_drift(reference, valid) if len(valid) > 0 else []
     alert_list = make_alerts(batch, results, drift_results)
 
-    save_batch(engine, batch, results, drift_results, alert_list)
+        # Model performance, only if this batch has labels (monitors above never used them)
+    evaluation = None
+    if config.TARGET in valid.columns and len(valid) > 0:
+        evaluation = {"model_version": config.MODEL_VERSION, **evaluate(model, valid)}
+        log.info("Batch %s: model ROC-AUC %s on %d labelled rows", batch_id,
+                 None if evaluation["roc_auc"] is None else round(evaluation["roc_auc"], 3),
+                 evaluation["n_labelled"])
+
+    save_batch(engine, batch, results, drift_results, alert_list, evaluation)
 
     for r in results:
         if r.failed_count > 0:
@@ -71,8 +80,9 @@ def main():
     create_tables(engine)
     schema = load_schema()
     reference = load_reference()   # loaded once, reused for every batch
+    model = load_model()
     for path in sys.argv[1:]:
-        run_batch(Path(path), engine, schema, reference)
+        run_batch(Path(path), engine, schema, reference, model)
 
 
 if __name__ == "__main__":

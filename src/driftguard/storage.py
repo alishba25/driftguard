@@ -55,6 +55,20 @@ alerts = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+model_evaluations = Table(
+    "model_evaluations", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("batch_id", String(12), ForeignKey("batches.batch_id"), nullable=False),
+    Column("model_version", String, nullable=False),
+    Column("n_labelled", Integer, nullable=False),
+    Column("accuracy", Float),
+    Column("precision", Float),
+    Column("recall", Float),
+    Column("f1", Float),
+    Column("roc_auc", Float),     # empty if the batch had only one class
+    Column("pr_auc", Float),
+)
+
 
 def get_engine(url: str | None = None):
     """Connect using DATABASE_URL from your .env file (or a URL passed in, for tests)."""
@@ -68,13 +82,14 @@ def create_tables(engine) -> None:
     metadata.create_all(engine)   # only creates tables that don't exist yet
 
 
-def save_batch(engine, batch: dict, results: list, drift_results=(), alert_list=()) -> None:
+def save_batch(engine, batch: dict, results: list, drift_results=(), alert_list=(),
+               evaluation=None) -> None:
     """Replace any earlier record of this batch, so reruns never duplicate it."""
     batch_id = batch["batch_id"]
     now = datetime.now(timezone.utc)
     with engine.begin() as conn:   # one transaction: all of it is saved, or none
         # Delete children first: they point at the batch row (foreign keys)
-        for table in (alerts, monitoring_results, quality_results):
+        for table in (model_evaluations, alerts, monitoring_results, quality_results):
             conn.execute(delete(table).where(table.c.batch_id == batch_id))
         conn.execute(delete(batches).where(batches.c.batch_id == batch_id))
 
@@ -91,3 +106,5 @@ def save_batch(engine, batch: dict, results: list, drift_results=(), alert_list=
         rows = [{"batch_id": batch_id, **a, "created_at": now} for a in alert_list]
         if rows:
             conn.execute(insert(alerts), rows)
+        if evaluation:   # only when the batch came with labels
+            conn.execute(insert(model_evaluations).values(batch_id=batch_id, **evaluation))
