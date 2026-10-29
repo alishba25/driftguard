@@ -7,7 +7,7 @@ detects distribution drift, and records whether drift affects model performance.
 drift detection distinguish harmful distribution changes from harmless shifts
 in machine-learning input data?
 
-**Status:** Phase 2 - Complete
+**Status:** Phase 3 - Complete
 
 ## How to run (Phase 1)
 
@@ -51,3 +51,16 @@ Logistic regression, seed 42, evaluated on a 20% stratified test split.
     python scripts/make_batches.py     # Phase 2: test batches
     python -m driftguard.pipeline data/batches/batch_001.csv
     pytest                             # run all tests
+
+## How to run (Phase 3)
+    python scripts/make_shifted_batches.py   # Phase 3: demo shifts
+    python scripts/false_alert_check.py      # Phase 3: experiment E1
+
+### Evidently comparison (separate environment, needs pandas < 3)
+
+    python -m venv .venv-evidently
+    .venv-evidently\Scripts\Activate.ps1
+    pip install -r requirements-evidently.txt
+    pip install -e .
+    python scripts/compare_evidently.py data/batches/batch_001.csv
+
