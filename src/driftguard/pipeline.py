@@ -4,7 +4,9 @@ import sys
 from pathlib import Path
 
 from driftguard import config
+from driftguard.alerts import make_alerts
 from driftguard.ingestion import make_batch_id, read_batch
+from driftguard.monitoring import detect_drift, load_reference
 from driftguard.schema import load_schema
 from driftguard.storage import create_tables, get_engine, save_batch
 from driftguard.validation import validate_batch
@@ -21,7 +23,7 @@ def setup_logging() -> None:
     )
 
 
-def run_batch(path: Path, engine, schema: dict) -> dict:
+def run_batch(path: Path, engine, schema: dict, reference) -> dict:
     batch_id = make_batch_id(path)
     log.info("Batch %s: reading %s", batch_id, path)
     df = read_batch(path)
@@ -42,7 +44,12 @@ def run_batch(path: Path, engine, schema: dict) -> dict:
 
     batch = {"batch_id": batch_id, "source_file": str(path), "row_count": len(df),
              "valid_count": len(valid), "rejected_count": len(rejected), "status": status}
-    save_batch(engine, batch, results)
+
+    # Drift is checked on valid rows only: broken rows were already caught above
+    drift_results = detect_drift(reference, valid) if len(valid) > 0 else []
+    alert_list = make_alerts(batch, results, drift_results)
+
+    save_batch(engine, batch, results, drift_results, alert_list)
 
     for r in results:
         if r.failed_count > 0:
@@ -50,6 +57,8 @@ def run_batch(path: Path, engine, schema: dict) -> dict:
                         batch_id, r.rule, r.column, r.failed_count, 100 * r.failure_rate)
     log.info("Batch %s: %d rows, %d valid, %d rejected -> %s",
              batch_id, len(df), len(valid), len(rejected), status)
+    for a in alert_list:
+        log.warning("Batch %s: ALERT [%s/%s] %s", batch_id, a["category"], a["severity"], a["message"])
     return batch
 
 
@@ -61,8 +70,9 @@ def main():
     engine = get_engine()
     create_tables(engine)
     schema = load_schema()
+    reference = load_reference()   # loaded once, reused for every batch
     for path in sys.argv[1:]:
-        run_batch(Path(path), engine, schema)
+        run_batch(Path(path), engine, schema, reference)
 
 
 if __name__ == "__main__":
