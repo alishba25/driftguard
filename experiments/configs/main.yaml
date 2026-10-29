@@ -1,0 +1,48 @@
+# Phase 4 experiment configuration.
+# Fixed on 29-10-2026, BEFORE the first full run. Do not tune these on the results.
+
+seeds: [0, 1, 2, 3, 4]   # every scenario is repeated once per seed
+n_batches: 16             # batches per run, processed in order
+batch_size: 600           # 16 x 600 = 9,600 rows, just under the monitor pool
+shift_start: 8            # first changed batch (counting from 0); batches 0-7 are normal
+harm_auc_drop: 0.03       # a batch is "harmful" if ROC-AUC falls more than this below baseline
+
+scenarios:
+  A_stable:
+    type: stable
+
+  B_corruption:
+    type: corruption
+    rate: 0.05            # 5% of rows broken in each changed batch
+
+  C_shift_low:
+    type: numeric_shift
+    column: hours-per-week
+    amount: 2             # +2 hours per week
+
+  C_shift_mid:
+    type: numeric_shift
+    column: hours-per-week
+    amount: 5
+
+  C_shift_high:
+    type: numeric_shift
+    column: hours-per-week
+    amount: 10
+
+  D_sudden:
+    type: resample
+    column: marital-status
+    value: Married-civ-spouse
+    share: 0.7            # changed batches are 70% married (normally about 46%)
+
+  E_gradual:
+    type: gradual_shift
+    column: age
+    max_amount: 10        # grows from +1.25 years to +10 years over batches 8-15
+
+  F_concept:
+    type: label_flip
+    column: marital-status
+    value: Married-civ-spouse
+    flip_rate: 0.35       # 35% of married people's labels flipped; inputs unchanged

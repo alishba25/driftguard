@@ -35,3 +35,10 @@ DRIFT_ALPHA = 0.05               # overall false-alarm budget per batch
 DRIFT_CORRECTION = "bonferroni"  # split that budget across features ("none" to switch off)
 RARE_CATEGORY_SHARE = 0.01       # categories under 1% of reference are grouped as "__other__"
 QUALITY_ALERT_RATE = 0.01        # alert if more than 1% of a batch's rows are rejected
+
+
+# ---- Model (Phase 4) ----
+MODEL_PATH = Path("models/baseline_logreg.joblib")
+MODEL_VERSION = "baseline_logreg_v1"
+BASELINE_METRICS_PATH = Path("reports/baseline_metrics.json")
+
