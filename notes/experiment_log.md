@@ -16,7 +16,7 @@ than separately. Bonferroni (p < 0.05/12 ≈ 0.0042 per feature) cut false alert
   8 scenarios x 5 seeds x 16 batches of 600 rows = 640 batches; change starts
   at batch 8; harm = ROC-AUC more than 0.03 below baseline (baseline 0.9056,
   so harmful = ROC-AUC < 0.8756)
-- Reproducibility: NOT YET VERIFIED (full rerun pending)
+- Reproducibility: verified 03-11-2026. A local rerun and a clean Docker rerun(fresh dataset download, freshly trained model) both reproduced all 640 batch results exactly (timings excluded); checked with experiments compare_runs.py
 - Sanity check: A_stable harmful share = 0.025 after the change (1 of 40 batches).
   Before the change, 8 of 320 batches (2.5%) were "harmful" across all scenarios:
   exactly 1 per scenario, because the paired design reuses the same base batches,
