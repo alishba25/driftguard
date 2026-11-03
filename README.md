@@ -25,8 +25,8 @@ change, and did the model actually get worse?
   harmed the model in 39 of 40 batches (ROC-AUC 0.906 to 0.842), while drift
   alerts stayed at the false-alert rate.
 - **Quality checks name the real cause.** Without a quality gate, drift
-  detection blamed all 40 corrupted batches on a shift in one feature; the
-  combined strategy correctly reported a data-quality problem.
+  detection named a shift in `sex` in all 40 corrupted batches; the combined
+  strategy correctly reported a data-quality problem.
 - **Fully reproducible.** A clean Docker rerun, with a fresh data download and
   a freshly trained model, reproduced all 640 batch results exactly.
 

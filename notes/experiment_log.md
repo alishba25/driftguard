@@ -10,13 +10,50 @@ than separately. Bonferroni (p < 0.05/12 ≈ 0.0042 per feature) cut false alert
 - Conclusion: per-feature testing without correction is unusable for monitoring, so Bonferroni is adopted as the default before Phase 4. The expected cost is lower sensitivity to small real shifts, which Phase 4 will measure.
 - Limitation: batches are drawn from the same ~9,800-row pool, so they overlap and are not fully independent samples
 
+## E2: DriftGuard vs Evidently on three demo batches (date: 29-10-2026)
+
+- Setup: batch_001 (clean, 1,000 rows), batch_shift_age (age +8 years, capped
+  at 90), batch_shift_marital (70% Married-civ-spouse); reference = training
+  split. DriftGuard: KS / chi-square, Bonferroni p < 0.0042 per feature.
+  Evidently 0.7 DataDriftPreset, default settings, separate environment (pandas < 3)
+- Evidently's methods: Wasserstein distance (normed) for all 5 numeric
+  features, Jensen-Shannon distance for all 7 categorical features; drift if
+  distance >= 0.1. These measure how BIG a change is, while DriftGuard's
+  p-values measure how CERTAIN it is that a change exists
+
+| Batch | DriftGuard flagged | Evidently flagged (distance) |
+| --- | --- | --- |
+| batch_001 | none | none (highest: native-country 0.095) |
+| batch_shift_age | age | age (0.505) |
+| batch_shift_marital | age, marital-status, relationship, occupation, sex | age (0.179), marital-status (0.175), relationship (0.175), hours-per-week (0.101) |
+
+- Agreement: 33 of 36 feature decisions matched. Both tools were silent on the
+  clean batch, caught the age shift with no false flags, and agreed on the
+  three largest changes in the marital batch (age, marital-status, relationship)
+- Disagreement: all 3 disagreements were on the marital batch
+  - DriftGuard only: occupation (JS 0.069) and sex (JS 0.081). These changes are
+    statistically clear with 1,000 rows against a ~29,000-row reference, but
+    smaller than Evidently's 0.1 distance cut-off
+  - Evidently only: hours-per-week (0.101), just over the cut-off; DriftGuard's
+    KS test did not reach p < 0.0042
+- Interpretation: the tools disagree only on small, borderline changes, and
+  for a predictable reason: a significance test flags any change it is sure
+  is real, however small; a distance threshold flags only changes above a
+  fixed size. The occupation and sex shifts are plausibly real knock-on effects
+  of over-sampling married people (most are recorded as Husband, so mostly male),
+  so DriftGuard is not wrong to flag them. Whether such small changes matter
+  for the model is the open question for Phase 4 (H4)
+- Reproducibility: the comparison was run twice with identical output
+- Limitation: three hand-made batches, one seed each; a sanity check of the
+  two tools, not a measure of their accuracy (that is Phase 4)
+
 ## E3: Main experiment, four strategies x scenarios A-F (date: 29-10-2026)
 
 - Setup: experiments/configs/main.yaml (committed 29-10-2026, before the first run);
   8 scenarios x 5 seeds x 16 batches of 600 rows = 640 batches; change starts
   at batch 8; harm = ROC-AUC more than 0.03 below baseline (baseline 0.9056,
   so harmful = ROC-AUC < 0.8756)
-- Reproducibility: verified 03-11-2026. A local rerun and a clean Docker rerun(fresh dataset download, freshly trained model) both reproduced all 640 batch results exactly (timings excluded); checked with experiments compare_runs.py
+- Reproducibility: verified 03-11-2026. A local rerun and a clean Docker rerun (fresh dataset download, freshly trained model) both reproduced all 640 batch results exactly (timings excluded); checked with experiments/compare_runs.py
 - Sanity check: A_stable harmful share = 0.025 after the change (1 of 40 batches).
   Before the change, 8 of 320 batches (2.5%) were "harmful" across all scenarios:
   exactly 1 per scenario, because the paired design reuses the same base batches,
@@ -73,9 +110,11 @@ than separately. Bonferroni (p < 0.05/12 ≈ 0.0042 per feature) cut false alert
 - Harm defined by one ROC-AUC rule; other rules could classify differently.
   D's ROC-AUC drop may partly reflect the changed population mix rather than
   a broken model, since ROC-AUC itself depends on who is in the batch
-- About 13 of the 81 harmful batches are background noise (one unlucky base
-  batch per seed, repeated across scenarios by the paired design), which
-  slightly inflates harm counts outside D and F
+- The paired design reuses base batches across scenarios. 12 of the 13
+  harmful batches outside D and F are two base batches repeated across
+  scenarios (seed 0 batch 5, ROC-AUC 0.8752, just below the 0.8756 threshold;
+  and seed 4 batch 14). The thirteenth is a corrupted batch in B (seed 0,
+  batch 8). This slightly inflates harm counts outside D and F
 - Combined uses no performance signal (labels are rarely available at once)
 - Only one shift size per feature for E and D; the C result suggests severity
   should also be tested on a smoother feature (e.g. age) before generalising

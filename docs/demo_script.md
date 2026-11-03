@@ -67,7 +67,8 @@ For interviews, or a short screen recording.
 > Drift detection caught almost every change, but only 15% of its alerts
 > came on batches where the model was really harmed. And the change that hurt
 > the model most, where the relationship between inputs and income changed,
-> produced no alerts at all, because the inputs themselves never changed."
+> raised alerts on only 2 of 40 batches, no more than on stable data, because
+> the inputs themselves never changed."
 
 > "So a drift alert is a prompt to check performance, not proof of a problem.
 > The results reproduced exactly in a clean Docker rerun."

@@ -8,75 +8,33 @@ alishba25ansari@gmail.com
 
 ## Abstract
 
-Machine-learning systems can receive input data that is malformed or that
-differs from their training data, but a monitoring alert does not necessarily
-mean the model is performing worse. We compare four monitoring strategies (no
-monitoring, data-quality checks only, statistical drift detection only, and
-both combined) on a logistic regression model for the UCI Adult income task.
-Across 640 batches covering eight controlled scenarios and five random seeds,
-we score every alert against two separate ground truths: whether the input
-data changed, and whether the model's ROC-AUC fell by more than 0.03. Drift
-detection found 97.5% of input changes with 1 false alert per 100 unchanged
-batches, but only 35 of its 238 alerts (15%) fell on batches where the model
-was actually harmed. A change in the label relationship harmed the model in
-39 of 40 batches, while drift alerts stayed at the rate seen on stable data.
-Without a quality gate, drift detection attributed all 40 corrupted batches to
-a distribution change in the sex feature; combining both methods left
-detection unchanged but named the correct cause. All results reproduced
-exactly in an independent containerised rerun. The results illustrate that
-feature-distribution monitoring cannot, on its own, establish whether a model
-has degraded.
+Malformed input data and data that differs from the data used for model training can be fed into machine-learning systems without the monitoring alert indicating degradation in the model's performance. This paper is a comparison of four monitoring strategies: no monitoring, data-quality checks only, statistical drift detection only, and both, on a logistic regression model for the UCI Adult income task. We evaluate all the alerts with two distinct ground-truths across 640 batches of data, including eight controlled scenarios and five random seeds, namely: (1) whether the data in the input record changes, and (2) whether the model's ROC-AUC decreases by more than 0.03. Drift detection reported 97.5% of all the changes in the input data with 1 false alert per 100 batches with no change, and 35 of its 238 alerts (15%) occurred on batches that the model was actually affected. A change in the label relationship had a negative impact on the model in 39 of 40 batches, with the drift alerts remaining at the level observed on stable data. When the analyses were performed without a quality gate, 40 of the batches were suspected to be corrupted due to a change in the distribution of the sex feature, and with the combination of both methods, 40 batches were still suspected to be corrupted, but the attribution of the cause of the drift remained correct. All the results are reproduced exactly in an independent containerised rerun. The results show that it is impossible to identify a degradation in a model based on a monitoring of the features alone.
 
 ---
 
 ## 1. Introduction
 
-A deployed machine-learning model keeps returning predictions whatever data
-it receives. Incoming data can be malformed (missing values, impossible
-numbers, unknown categories), or valid but different from the training data,
-for example because the population has changed. Some of these changes harm
-the model's predictions; many do not. Monitoring systems therefore face two
-separate questions: has the data changed, and does the change matter?
+An active machine-learning model spits out the same prediction regardless of the data it consumes. The data may be malformed (e.g., have missing values, impossible numbers, or unknown categories) or valid but different from the training data (e.g., due to changes in the population). Many of these changes are not detrimental to predictions in the model, while some are. There are then two questions to ask with respect to monitoring systems:
+1. has something changed 
+and 
+2. is the change significant?
 
-Data-quality validation and statistical drift detection are both standard
-practice in production ML systems [Breck et al. 2019; Schelter et al. 2018].
-Prior work has shown that simple per-feature drift tests are effective
-detectors of dataset shift [Rabanser et al. 2019], and that many shifts are
-benign, so that detecting harmful shifts requires information about model
-performance [Podkopaev & Ramdas 2022]. Less attention has been paid to how
-these tools behave together inside a working batch pipeline, and to how their
-alerts relate to actual changes in model performance when both are measured
-on the same batches.
+In production ML systems, it is common practice to validate data quality and monitor drift in statistics [Breck et al. 2019; Schelter et al. 2018]. Simple per-feature drift tests have been found to be effective detectors of dataset drift in the past [Rabanser et al. 2019] and many shifts are harmless, thus detecting harmful shifts requires knowledge of the model performance [Podkopaev & Ramdas 2022]. We were not able to locate any controlled comparison of quality only, drift only and combined monitoring, in which all alerts were rated based on the relative input change and the harm to observed performance.
 
-This paper asks: **how effectively can data-quality checks combined with
-drift detection distinguish harmful distribution changes from harmless
-shifts in machine-learning input data?** We build a small, end-to-end batch
-pipeline and run a controlled experiment with known changes, so that every
-alert can be checked against what really happened.
+This paper questions: What is the effectiveness of the combination of data quality checks and drift detection in discriminating harmful distribution changes from harmless machine learning input data changes? We create a minimal end-to-end batch pipeline and execute a controlled experiment in order to validate each alert with what actually happened, thereby having known changes.
 
-Our contribution is empirical and deliberately modest. The individual
-components we use (per-feature drift tests, rule-based data validation, and
-the observation that drift and harm differ) are all established. We
-contribute:
+Our contribution is an empirical one and it's a small one. The building blocks that we use (per-feature drift tests, rule-based data validation, and the fact that drift and harm are different) are known. We contribute:
 
-1. A reproducible, controlled comparison of four monitoring strategies (none,
-   quality-only, drift-only, combined) on a tabular classification pipeline,
-   across eight scenarios covering data corruption and sudden, gradual and
-   label-relationship changes.
-2. An evaluation that scores every alert against two separate ground truths,
-   input change and performance harm, rather than treating them as one.
-3. Open code, configuration and results that rebuild every number and figure
-   with a few commands, verified by an independent containerised rerun.
+A reproducible controlled comparison of four monitoring strategies (None, Quality, Drift, Combined) on a tabular classification pipeline, for eight scenarios, including data corruption and sudden, gradual and label-relationship changes.
+An evaluation which marks each alert against two different ground truths, instead of one.
+Open code, configuration and results that allow to rebuild all numbers and figures with a few commands, and then check by an independent rerun in a containerised environment.
 
-We test four hypotheses:
+We test the four hypotheses:
 
-- **H1:** A data-quality gate catches malformed, missing, duplicated or
-  out-of-range records that drift detection alone may not classify correctly.
-- **H2:** Combining quality and drift monitoring is more informative than
-  either alone, though it may not win on every metric.
-- **H3:** Drift detection depends on the type and severity of the shift.
-- **H4:** Feature drift does not always correspond to reduced predictive
-  performance.
+H1: Malformed, missing, duplicated or out-of-range records that may not be accurately classified by drift detection are caught by a data-quality gate.
+H2: Quality and drift monitoring are more informative than either alone, but they might not be better on all measures.
+The type and magnitude of the drift are key factors in drift detection.
+H4: Feature drift is no sign of poorer predictive ability.
 
 ## 2. Related work
 
@@ -95,6 +53,18 @@ Our drift detector follows this established design, applied to tabular data.
 distribution shifts do not degrade a model and that a warning system should
 flag only harmful ones; their method requires at least some true labels. Our
 results provide a concrete pipeline-level illustration of the same gap.
+
+**Monitoring evaluations closest to ours.** Poenaru-Olaru et al. [2022]
+evaluated error-based and distribution-based drift detectors as alarm systems
+on batched data, measuring false positives, missed detections and latency,
+and found that distribution-based detectors raised more false alarms and
+struggled with one-hot-encoded categorical data and class imbalance. Dong et
+al. [2024] separate harmful from benign covariate drift by tracking how much
+serving data falls into regions where the model is less accurate, evaluating
+on datasets including UCI Adult with logistic regression. Our setting is
+closest to theirs, but our question differs: rather than deciding when to
+retrain, we compare quality-only, drift-only and combined monitoring and
+score each alert against both input change and observed harm.
 
 **Data validation in production.** Breck et al. [2019] describe the data
 validation system used in Google's TFX platform, and Schelter et al. [2018]
@@ -184,7 +154,7 @@ frequent false alarms. We therefore apply a Bonferroni correction, flagging a
 feature only when its p-value is below 0.05 / 12 = 0.0042. In a preliminary
 test on 100 stable 1,000-row batches, this reduced batches with false alerts
 from 37 to 3. Because the features are correlated, the correction is stricter
-than strictly necessary.
+than necessary.
 
 A quality alert is raised when a batch is unusable or more than 1% of its
 rows are rejected; a drift alert is raised when at least one feature drifts,
@@ -302,7 +272,8 @@ on 400 unchanged batches (1.0 per 100).
 
 ![Figure 4](figures/fig4_detection_over_batches.png)
 
-**Figure 4.** Share of the five runs with a drift alert at each batch.
+**Figure 4.** Share of the five runs with a drift alert at each batch. B and
+all three C scenarios follow the same line as D and are omitted.
 
 Sudden changes (B, C, D) were detected at the first changed batch in every
 run (Figure 4). The gradual age shift was never detected at +1.25 years
@@ -394,8 +365,10 @@ data is not mistaken for distribution change.
   batches differently. ROC-AUC itself depends on the mix of people in a batch,
   so part of D's drop may reflect its changed population rather than a less
   accurate model.
-- The paired design reuses base batches across scenarios; 13 of the 81 harmful
-  batches fall outside D and F, mostly repeats of a few unusual base batches.
+- The paired design reuses base batches across scenarios. 12 of the 13
+  harmful batches outside D and F are two base batches repeated across
+  scenarios; one of them (ROC-AUC 0.8752) sits just below the 0.8756
+  threshold. The thirteenth is a corrupted batch in B.
 - The KS test is conservative for features with many tied values, such as
   capital-gain and capital-loss, which are mostly zero.
 - The combined strategy uses no performance signal, since labels are rarely
@@ -431,26 +404,30 @@ requirements-lock-docker.txt.
 
 Becker, B., & Kohavi, R. (1996). Adult [Dataset]. UCI Machine Learning Repository. https://archive.ics.uci.edu/dataset/2/adult
 
-Breck, E., Zinkevich, M., Polyzotis, N., Whang, S., & Roy, S. (2019). Data validation for machine learning. In *Proceedings of Machine Learning and Systems (SysML)*.
+Breck, E., Zinkevich, M., Polyzotis, N., Whang, S. E., & Roy, S. (2019). Data validation for machine learning. In *Proceedings of Machine Learning and Systems (SysML) 2019*.
 
-Ding, F., Hardt, M., Miller, J., & Schmidt, L. (2021). Retiring Adult: New datasets for fair machine learning. In *Advances in Neural Information Processing Systems (NeurIPS)*.
+Ding, F., Hardt, M., Miller, J., & Schmidt, L. (2021). Retiring Adult: New datasets for fair machine learning. In *Advances in Neural Information Processing Systems 34*. https://arxiv.org/abs/2108.04884
 
-Evidently AI. (n.d.). Data drift explainer. Retrieved 3 November 2026, from https://docs.evidentlyai.com/metrics/explainer_drift
+Dong, S., Wang, Q., Sahri, S., Palpanas, T., & Srivastava, D. (2024). Efficiently mitigating the impact of data drift on machine learning pipelines. *Proceedings of the VLDB Endowment*, 17(11), 3072-3081. https://doi.org/10.14778/3681954.3681984
 
-Gama, J., Žliobaitė, I., Bifet, A., Pechenizkiy, M., & Bouchachia, A. (2014). A survey on concept drift adaptation. *ACM Computing Surveys*.
+Evidently AI. (n.d.). Data drift: how data drift detection works. Retrieved 3 November 2026, from https://docs.evidentlyai.com/metrics/explainer_drift
 
-Gardner, J., Popovic, Z., & Schmidt, L. (2023). Benchmarking distribution shift in tabular data with TableShift. In *Advances in Neural Information Processing Systems (NeurIPS)*.
+Gama, J., Žliobaitė, I., Bifet, A., Pechenizkiy, M., & Bouchachia, A. (2014). A survey on concept drift adaptation. *ACM Computing Surveys*, 46(4), Article 44. https://doi.org/10.1145/2523813
 
-Lu, J., Liu, A., Dong, F., Gu, F., Gama, J., & Zhang, G. (2019). Learning under concept drift: A review. *IEEE Transactions on Knowledge and Data Engineering*.
+Gardner, J., Popovic, Z., & Schmidt, L. (2023). Benchmarking distribution shift in tabular data with TableShift. In *Advances in Neural Information Processing Systems 36 (Datasets and Benchmarks Track)*. https://arxiv.org/abs/2312.07577
+
+Lu, J., Liu, A., Dong, F., Gu, F., Gama, J., & Zhang, G. (2019). Learning under concept drift: A review. *IEEE Transactions on Knowledge and Data Engineering*, 31(12), 2346-2363. https://doi.org/10.1109/TKDE.2018.2876857
 
 Pedregosa, F., et al. (2011). Scikit-learn: Machine learning in Python. *Journal of Machine Learning Research*, 12.
 
-Podkopaev, A., & Ramdas, A. (2022). Tracking the risk of a deployed model and detecting harmful distribution shifts. In *International Conference on Learning Representations (ICLR)*.
+Podkopaev, A., & Ramdas, A. (2022). Tracking the risk of a deployed model and detecting harmful distribution shifts. In *International Conference on Learning Representations (ICLR)*. https://arxiv.org/abs/2110.06177
 
-Rabanser, S., Günnemann, S., & Lipton, Z. C. (2019). Failing loudly: An empirical study of methods for detecting dataset shift. In *Advances in Neural Information Processing Systems (NeurIPS)*.
+Poenaru-Olaru, L., Cruz, L., van Deursen, A., & Rellermeyer, J. S. (2022). Are concept drift detectors reliable alarming systems? A comparative study. arXiv:2211.13098. https://arxiv.org/abs/2211.13098
 
-Schelter, S., Lange, D., Schmidt, P., Celikel, M., Biessmann, F., & Grafberger, A. (2018). Automating large-scale data quality verification. *Proceedings of the VLDB Endowment*, 11(12).
+Rabanser, S., Günnemann, S., & Lipton, Z. C. (2019). Failing loudly: An empirical study of methods for detecting dataset shift. In *Advances in Neural Information Processing Systems 32*. https://arxiv.org/abs/1810.11953
 
-Sculley, D., et al. (2015). Hidden technical debt in machine learning systems. In *Advances in Neural Information Processing Systems (NeurIPS)*.
+Schelter, S., Lange, D., Schmidt, P., Celikel, M., Biessmann, F., & Grafberger, A. (2018). Automating large-scale data quality verification. *Proceedings of the VLDB Endowment*, 11(12), 1781-1794. https://doi.org/10.14778/3229863.3229867
+
+Sculley, D., Holt, G., Golovin, D., Davydov, E., Phillips, T., Ebner, D., Chaudhary, V., Young, M., Crespo, J.-F., & Dennison, D. (2015). Hidden technical debt in machine learning systems. In *Advances in Neural Information Processing Systems 28*.
 
 Virtanen, P., et al. (2020). SciPy 1.0: Fundamental algorithms for scientific computing in Python. *Nature Methods*, 17.
