@@ -1,0 +1,27 @@
+# Runs every test on GitHub's servers whenever you push.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install libraries and the driftguard package
+        run: |
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Run the tests
+        run: pytest -v
