@@ -1,0 +1,11 @@
+# Never copy secrets, environments or data into the image
+.env
+.venv/
+.venv-evidently/
+.git/
+data/
+models/
+logs/
+reports/evidently/
+__pycache__/
+*.pyc
