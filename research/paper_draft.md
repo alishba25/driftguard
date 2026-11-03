@@ -8,33 +8,76 @@ alishba25ansari@gmail.com
 
 ## Abstract
 
-Malformed input data and data that differs from the data used for model training can be fed into machine-learning systems without the monitoring alert indicating degradation in the model's performance. This paper is a comparison of four monitoring strategies: no monitoring, data-quality checks only, statistical drift detection only, and both, on a logistic regression model for the UCI Adult income task. We evaluate all the alerts with two distinct ground-truths across 640 batches of data, including eight controlled scenarios and five random seeds, namely: (1) whether the data in the input record changes, and (2) whether the model's ROC-AUC decreases by more than 0.03. Drift detection reported 97.5% of all the changes in the input data with 1 false alert per 100 batches with no change, and 35 of its 238 alerts (15%) occurred on batches that the model was actually affected. A change in the label relationship had a negative impact on the model in 39 of 40 batches, with the drift alerts remaining at the level observed on stable data. When the analyses were performed without a quality gate, 40 of the batches were suspected to be corrupted due to a change in the distribution of the sex feature, and with the combination of both methods, 40 batches were still suspected to be corrupted, but the attribution of the cause of the drift remained correct. All the results are reproduced exactly in an independent containerised rerun. The results show that it is impossible to identify a degradation in a model based on a monitoring of the features alone.
-
----
+Machine-learning systems can receive input data that is malformed or that
+differs from the data used to train the model, but a monitoring alert does not
+necessarily indicate that the model's performance has degraded. This paper
+compares four monitoring strategies: no monitoring, data-quality checks only,
+statistical drift detection only, and both combined, on a logistic regression
+model for the UCI Adult income task. We evaluate every alert against two
+distinct ground truths across 640 batches of data, covering eight controlled
+scenarios and five random seeds: (1) whether the input data changed, and
+(2) whether the model's ROC-AUC fell by more than 0.03. Drift detection
+reported 97.5% of changes in the input data with 1 false alert per 100
+unchanged batches, but only 35 of its 238 alerts (15%) occurred on batches
+where the model was actually harmed. A change in the label relationship harmed
+the model in 39 of 40 batches, while drift alerts stayed at the level observed
+on stable data. Without a quality gate, drift detection attributed all 40
+corrupted batches to a change in the distribution of the sex feature; combining
+both methods left detection unchanged but correctly identified the cause as a
+data-quality problem. All results were reproduced exactly in an independent
+containerised rerun. The results show that monitoring the input features alone
+cannot establish whether a model has degraded.
 
 ## 1. Introduction
 
-An active machine-learning model spits out the same prediction regardless of the data it consumes. The data may be malformed (e.g., have missing values, impossible numbers, or unknown categories) or valid but different from the training data (e.g., due to changes in the population). Many of these changes are not detrimental to predictions in the model, while some are. There are then two questions to ask with respect to monitoring systems:
-1. has something changed 
-and 
-2. is the change significant?
+A deployed machine-learning model keeps producing predictions regardless of
+the data it receives. That data may be malformed (for example, missing values,
+impossible numbers or unknown categories) or valid but different from the
+training data (for example, because the population has changed). Many of these
+changes do not harm the model's predictions, while some do. Monitoring systems
+therefore have to answer two separate questions:
 
-In production ML systems, it is common practice to validate data quality and monitor drift in statistics [Breck et al. 2019; Schelter et al. 2018]. Simple per-feature drift tests have been found to be effective detectors of dataset drift in the past [Rabanser et al. 2019] and many shifts are harmless, thus detecting harmful shifts requires knowledge of the model performance [Podkopaev & Ramdas 2022]. We were not able to locate any controlled comparison of quality only, drift only and combined monitoring, in which all alerts were rated based on the relative input change and the harm to observed performance.
+1. Has the data changed?
+2. Does the change harm the model?
 
-This paper questions: What is the effectiveness of the combination of data quality checks and drift detection in discriminating harmful distribution changes from harmless machine learning input data changes? We create a minimal end-to-end batch pipeline and execute a controlled experiment in order to validate each alert with what actually happened, thereby having known changes.
+In production ML systems, it is common practice to validate data quality and to
+monitor statistical drift [Breck et al. 2019; Schelter et al. 2018]. Simple
+per-feature drift tests have been found to be effective detectors of dataset
+shift [Rabanser et al. 2019], and many shifts are harmless, so detecting
+harmful shifts requires knowledge of model performance [Podkopaev & Ramdas
+2022]. In the work we reviewed, we did not find a controlled comparison of
+quality-only, drift-only and combined monitoring in which every alert is scored
+against both input change and observed performance harm.
 
-Our contribution is an empirical one and it's a small one. The building blocks that we use (per-feature drift tests, rule-based data validation, and the fact that drift and harm are different) are known. We contribute:
+This paper asks: how effectively can data-quality checks combined with drift
+detection distinguish harmful distribution changes from harmless changes in
+machine-learning input data? We build a minimal end-to-end batch pipeline and
+run a controlled experiment with known changes, so that each alert can be
+checked against what actually happened.
 
-A reproducible controlled comparison of four monitoring strategies (None, Quality, Drift, Combined) on a tabular classification pipeline, for eight scenarios, including data corruption and sudden, gradual and label-relationship changes.
-An evaluation which marks each alert against two different ground truths, instead of one.
-Open code, configuration and results that allow to rebuild all numbers and figures with a few commands, and then check by an independent rerun in a containerised environment.
+Our contribution is empirical and deliberately small. The building blocks we
+use (per-feature drift tests, rule-based data validation, and the observation
+that drift and harm differ) are already known. We contribute:
 
-We test the four hypotheses:
+1. A reproducible, controlled comparison of four monitoring strategies (none,
+   quality-only, drift-only and combined) on a tabular classification
+   pipeline, across eight scenarios including data corruption and sudden,
+   gradual and label-relationship changes.
+2. An evaluation that scores each alert against two separate ground truths,
+   input change and performance harm, instead of one.
+3. Open code, configuration and results that rebuild every number and figure
+   with a few commands, verified by an independent rerun in a containerised
+   environment.
 
-H1: Malformed, missing, duplicated or out-of-range records that may not be accurately classified by drift detection are caught by a data-quality gate.
-H2: Quality and drift monitoring are more informative than either alone, but they might not be better on all measures.
-The type and magnitude of the drift are key factors in drift detection.
-H4: Feature drift is no sign of poorer predictive ability.
+We test four hypotheses:
+
+- **H1:** A data-quality gate catches malformed, missing, duplicated or
+  out-of-range records that drift detection alone may not classify correctly.
+- **H2:** Combining quality and drift monitoring is more informative than
+  either alone, though it may not be better on every measure.
+- **H3:** Drift detection depends on the type and magnitude of the shift.
+- **H4:** Feature drift does not always correspond to poorer predictive
+  performance.
 
 ## 2. Related work
 
