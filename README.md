@@ -8,7 +8,7 @@ detects distribution drift, and records whether drift affects model performance.
 drift detection distinguish harmful distribution changes from harmless shifts
 in machine-learning input data?
 
-**Status:** Phase 4 - Complete
+**Status:** Phase 5 - Complete
 
 ## How to run (Phase 1)
 
@@ -68,3 +68,36 @@ Logistic regression, seed 42, evaluated on a 20% stratified test split.
 ## How to run (Phase 4)
     python experiments/run_experiments.py    # Phase 4: main experiment (3-5 min)
     python experiments/summarize.py          # Phase 4: results tables
+
+## How to run (Phase 5)
+
+### Option A: Docker (no Python or PostgreSQL needed)
+
+    docker compose up -d --build
+    docker compose exec app python scripts/run_demo.py
+
+Then open http://localhost:8501
+
+### Option B: on your own machine
+
+    python -m venv .venv
+    .venv\Scripts\Activate.ps1        # Mac: source .venv/bin/activate
+    pip install -r requirements.txt
+    pip install -e .
+    copy .env.example .env             # then put your PostgreSQL password in .env
+    python scripts/run_demo.py
+    streamlit run dashboard/Overview.py
+
+Experiments: `python experiments/run_experiments.py` then `python experiments/summarize.py`
+Tests: `pytest`
+
+## Dashboard
+
+![Overview](docs/overview.png)
+![Drift](docs/drift.png)
+![Experiment results](docs/experiments.png)
+
+## Design notes
+
+- No API: the dashboard reads PostgreSQL directly, and nothing else needed one.
+- Evidently runs in a separate environment because it doesn't support pandas 3.
