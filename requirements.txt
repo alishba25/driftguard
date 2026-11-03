@@ -12,3 +12,4 @@ scipy>=1.11
 pyyaml>=6.0
 streamlit>=1.40
 plotly>=5.24
+matplotlib>=3.8
