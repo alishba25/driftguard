@@ -1,4 +1,5 @@
 # DriftGuard
+![tests](https://github.com/alishba25/driftguard/actions/workflows/tests.yml/badge.svg)
 
 A data-quality and ML-monitoring platform. It checks incoming data batches,
 detects distribution drift, and records whether drift affects model performance.
@@ -7,7 +8,7 @@ detects distribution drift, and records whether drift affects model performance.
 drift detection distinguish harmful distribution changes from harmless shifts
 in machine-learning input data?
 
-**Status:** Phase 3 - Complete
+**Status:** Phase 4 - Complete
 
 ## How to run (Phase 1)
 
