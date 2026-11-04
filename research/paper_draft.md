@@ -8,7 +8,7 @@ alishba25ansari@gmail.com
 
 ## Abstract
 
-Machine-learning systems can receive input data that is malformed or that
+We separate three questions that monitoring evaluations often merge: whether inputs changed, whether they are corrupted, and whether the model was harmed.Machine-learning systems can receive input data that is malformed or that
 differs from the data used to train the model, but a monitoring alert does not
 necessarily indicate that the model's performance has degraded. This paper
 compares four monitoring strategies: no monitoring, data-quality checks only,
@@ -40,6 +40,19 @@ therefore have to answer two separate questions:
 1. Has the data changed?
 2. Does the change harm the model?
 
+These are three different questions, and we keep them separate throughout.
+A *distribution change* is any difference between incoming inputs and the
+training data, such as a new mix of people. *Data corruption* is input that
+is invalid: missing required values, impossible numbers, unknown categories,
+duplicated records. *Performance harm* is a measurable drop in the model's
+predictive quality on the batch. A drift detector answers the first question,
+a data-quality gate the second, and only labels can answer the third. The
+three are easily conflated: corrupted values can look like a distribution
+change to a drift test, a large distribution change can leave a model's
+performance intact, and a change in the relationship between inputs and
+labels can harm the model while leaving the inputs, and so every input
+monitor, unchanged.
+
 In production ML systems, it is common practice to validate data quality and to
 monitor statistical drift [Breck et al. 2019; Schelter et al. 2018]. Simple
 per-feature drift tests have been found to be effective detectors of dataset
@@ -55,19 +68,26 @@ machine-learning input data? We build a minimal end-to-end batch pipeline and
 run a controlled experiment with known changes, so that each alert can be
 checked against what actually happened.
 
-Our contribution is empirical and deliberately small. The building blocks we
-use (per-feature drift tests, rule-based data validation, and the observation
-that drift and harm differ) are already known. We contribute:
+Our contribution is empirical. The individual components we use (per-feature
+drift tests, rule-based data validation, and the observation that drift and
+harm differ) are all established. What we add is an evaluation that measures
+them against each other:
 
-1. A reproducible, controlled comparison of four monitoring strategies (none,
-   quality-only, drift-only and combined) on a tabular classification
-   pipeline, across eight scenarios including data corruption and sudden,
-   gradual and label-relationship changes.
-2. An evaluation that scores each alert against two separate ground truths,
-   input change and performance harm, instead of one.
-3. Open code, configuration and results that rebuild every number and figure
-   with a few commands, verified by an independent rerun in a containerised
-   environment.
+1. **Three separate ground truths on the same batches.** Every batch records
+   whether its inputs changed, whether they were corrupted, and whether the
+   model was harmed, and every alert is scored against each. This lets us
+   report, for the same alerts, how well they detect change, whether they
+   attribute corruption correctly, and how often they coincide with harm.
+2. **A controlled and a real-shift setting.** Eight controlled scenarios on
+   UCI Adult (corruption; sudden, gradual and label-relationship changes), and
+   real geographic shift on Folktables ACSIncome, where models trained on
+   California are monitored on four other US populations.
+3. **Two model families and quantified uncertainty.** Logistic regression and
+   gradient-boosted trees, 20 seeds per scenario, 95% confidence intervals from
+   a bootstrap over seeds, and a sensitivity analysis of the harm threshold.
+4. **Full reproducibility.** Configurations committed before each run, and
+   code that rebuilds every number and figure, verified by an independent
+   containerised rerun.
 
 We test four hypotheses:
 
@@ -81,47 +101,63 @@ We test four hypotheses:
 
 ## 2. Related work
 
-**Drift and concept drift.** Gama et al. [2014] and Lu et al. [2019] survey
-learning under concept drift and establish the vocabulary used here: sudden
-and gradual drift, and the distinction between a change in the input
+We organise prior work by which of the three questions it addresses:
+whether the input distribution has changed, whether the input data is
+corrupted, and whether the model's performance has been harmed. Table 1
+summarises the comparison.
+
+**Detecting distribution change.** Gama et al. [2014] and Lu et al. [2019]
+survey learning under concept drift and establish the vocabulary used here:
+sudden and gradual drift, and the distinction between a change in the input
 distribution and a change in the relationship between inputs and labels.
+Rabanser et al. [2019] compare methods for detecting dataset shift and find
+that per-feature univariate tests with a Bonferroni correction perform
+comparably to multivariate two-sample tests; our drift detector follows this
+design. Poenaru-Olaru et al. [2022] ask whether drift detectors are reliable
+as alarm systems, measuring detection latency and false alarms, and conclude
+that they are not fully reliable. Both studies evaluate how well a detector
+finds a change. We take detection as largely solved for the shifts we study
+and ask a different question: what a correct detection tells an operator
+about the model.
 
-**Detecting dataset shift.** Rabanser et al. [2019] compared a range of
-shift detectors and found that per-feature Kolmogorov-Smirnov tests combined
-with a Bonferroni correction performed comparably to multivariate tests,
-despite the conservative correction; small shifts remained hard to detect.
-Our drift detector follows this established design, applied to tabular data.
+**Detecting corrupted data.** Breck et al. [2019] describe schema-based data
+validation in Google's TFX platform, Schelter et al. [2018] declarative
+data-quality verification at Amazon, and Sculley et al. [2015] identify data
+dependencies as a source of hidden technical debt in ML systems. This work
+treats validation as a separate safeguard; it does not measure what a drift
+detector reports when corrupted data reaches it, or whether a quality failure
+harms the model. We measure both.
 
-**Harmful versus benign shift.** Podkopaev and Ramdas [2022] argue that many
-distribution shifts do not degrade a model and that a warning system should
-flag only harmful ones; their method requires at least some true labels. Our
-results provide a concrete pipeline-level illustration of the same gap.
-
-**Monitoring evaluations closest to ours.** Poenaru-Olaru et al. [2022]
-evaluated error-based and distribution-based drift detectors as alarm systems
-on batched data, measuring false positives, missed detections and latency,
-and found that distribution-based detectors raised more false alarms and
-struggled with one-hot-encoded categorical data and class imbalance. Dong et
-al. [2024] separate harmful from benign covariate drift by tracking how much
-serving data falls into regions where the model is less accurate, evaluating
-on datasets including UCI Adult with logistic regression. Our setting is
-closest to theirs, but our question differs: rather than deciding when to
-retrain, we compare quality-only, drift-only and combined monitoring and
-score each alert against both input change and observed harm.
-
-**Data validation in production.** Breck et al. [2019] describe the data
-validation system used in Google's TFX platform, and Schelter et al. [2018]
-describe declarative data-quality verification at Amazon. Sculley et al.
-[2015] identify data dependencies as a major source of hidden technical debt
-in ML systems. Together these motivate treating validation as a first-class
-part of monitoring.
+**Establishing performance harm.** Several works argue that a shift matters
+only if it degrades the model. Rabanser et al. [2019] approximate a shift's
+malignancy with a heuristic that needs a labelling function. Podkopaev and
+Ramdas [2022] track a deployed model's risk with sequential tests that use
+labels and raise an alarm only for harmful shifts. Dong et al. [2024] identify
+regions of the input space where a model is less accurate and treat covariate
+shift as harmful only when more serving data falls into them, then mitigate it
+by retraining with expert labels. These methods detect harm well, but each
+requires labels at monitoring time and none evaluates a conventional input
+monitor against harm. Our study is complementary: it measures how often the
+alerts of label-free monitors, which are what most pipelines run, coincide
+with harm that labels later reveal.
 
 **Tools and benchmarks.** Evidently is a widely used open-source monitoring
 library; with reference data of more than 1,000 rows it uses distance
-measures rather than hypothesis tests by default [Evidently AI]. TableShift
-[Gardner et al. 2023] and Folktables [Ding et al. 2021] provide tabular
-datasets with real, naturally occurring shifts; Ding et al. also document
-limitations of the UCI Adult dataset used here.
+measures rather than hypothesis tests by default [Evidently AI]. Folktables
+[Ding et al. 2021] and TableShift [Gardner et al. 2023] provide tabular data
+with real, naturally occurring shifts, and Ding et al. document limitations
+of the UCI Adult dataset. We use Folktables for our real-shift experiment.
+
+**Table 1.** Which of the three questions each line of work addresses.
+
+| Work | Distribution change | Data corruption | Performance harm | Labels needed when monitoring |
+| --- | --- | --- | --- | --- |
+| Rabanser et al. 2019 | Detects | No | Approximated (heuristic) | For the harm estimate |
+| Poenaru-Olaru et al. 2022 | Detects; evaluates reliability | No | Not measured | No |
+| Breck et al. 2019; Schelter et al. 2018 | Partly (skew checks) | Detects | Not measured | No |
+| Podkopaev & Ramdas 2022 | Not the target | No | Detects | Yes |
+| Dong et al. 2024 | Detects covariate shift | No | Detects | Some (expert labels) |
+| **This work** | **Detects; scored vs. truth** | **Detects; scored vs. truth** | **Measured; alerts scored vs. it** | **No (labels used only for evaluation)** |
 
 ## 3. Methods
 
@@ -391,6 +427,15 @@ confirm harm, since it alerted equally on D, which was harmful, and on C and
 E, which were not, nor detect it, since it missed F. This is consistent with
 Podkopaev and Ramdas [2022] and supports measuring performance directly
 whenever labels become available.
+
+**What separating the three questions shows.** Scored against input change
+alone, drift detection looks nearly perfect. Scored against corruption, it
+alerts on every corrupted batch but names the wrong cause, a shift in one
+feature. Scored against harm, most of its alerts are on batches the model
+handles normally, and it misses the change that harms the model most. The
+same alerts support three different verdicts depending on which question is
+asked. Evaluations that report only the first, as is common for drift
+detectors, therefore say little about whether an operator should act.
 
 **Practical implication.** In a pipeline like this one, drift alerts are best
 treated as a prompt to check model performance rather than as evidence that
