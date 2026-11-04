@@ -1,4 +1,6 @@
 """Build sequences of batches with a known, recorded change (the ground truth)."""
+from functools import lru_cache
+
 import numpy as np
 import pandas as pd
 
@@ -14,6 +16,7 @@ def make_run(pool: pd.DataFrame, scenario: dict, seed: int, settings: dict):
     """
     n, size, start = settings["n_batches"], settings["batch_size"], settings["shift_start"]
     rng = np.random.default_rng(seed)
+    settings = {**settings, "_seed": seed}   # real_shift uses the run's seed
     shuffled = pool.sample(frac=1, random_state=seed).reset_index(drop=True)
 
     run = []
@@ -58,6 +61,15 @@ def apply_change(batch, scenario, i, settings, pool, rng):
         ])
         return picked.sample(frac=1, random_state=int(rng.integers(1e9))).reset_index(drop=True), share
 
+    if kind == "real_shift":
+        # Replace the batch with real people from another population. Each run
+        # takes its own non-overlapping slice of the target pool, in order.
+        target = load_target_pool(scenario["target_pool"])
+        shuffled = target.sample(frac=1, random_state=settings["_seed"]).reset_index(drop=True)
+        k = i - settings["shift_start"]
+        size = len(batch)
+        return shuffled.iloc[k * size:(k + 1) * size].reset_index(drop=True), 1.0
+
     if kind == "label_flip":
         batch = batch.copy()
         who = batch[scenario["column"]] == scenario["value"]
@@ -79,20 +91,27 @@ def shift_column(batch, column, amount):
 
 def corrupt(batch, rate, rng):
     """Break `rate` of the rows, split evenly over five kinds of problem."""
+    age, sex, hours = (config.CORRUPT_COLUMNS[k] for k in ("age", "sex", "hours"))
     batch = batch.copy()
-    batch["age"] = batch["age"].astype("object")
-    batch["hours-per-week"] = batch["hours-per-week"].astype("object")
+    batch[age] = batch[age].astype("object")
+    batch[hours] = batch[hours].astype("object")
     rows = rng.choice(len(batch), size=round(len(batch) * rate), replace=False)
     for k, row in enumerate(rows):
         problem = k % 5
         if problem == 0:
-            batch.loc[row, "age"] = None                 # missing required value
+            batch.loc[row, age] = None                   # missing required value
         elif problem == 1:
-            batch.loc[row, "sex"] = "Unknown"            # invalid category
+            batch.loc[row, sex] = "Unknown"              # invalid category
         elif problem == 2:
-            batch.loc[row, "age"] = 250                  # out of range
+            batch.loc[row, age] = 250                    # out of range
         elif problem == 3:
-            batch.loc[row, "hours-per-week"] = "forty"   # wrong type
+            batch.loc[row, hours] = "forty"              # wrong type
         else:
             batch.iloc[row] = batch.iloc[(row + 1) % len(batch)]   # duplicate row
     return batch
+
+
+@lru_cache(maxsize=None)
+def load_target_pool(path: str) -> pd.DataFrame:
+    """A real target population (e.g. another US state), read once and reused."""
+    return pd.read_csv(path)

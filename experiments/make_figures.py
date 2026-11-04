@@ -6,6 +6,7 @@ Reads experiments/results/*.csv and writes PNG + PDF files to research/figures/.
 Every number in every figure comes from the CSVs, so figures can always be rebuilt.
 """
 import json
+import sys 
 from pathlib import Path
 
 import matplotlib
@@ -14,13 +15,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 
-RESULTS = Path("experiments/results")
+CONFIG = Path(sys.argv[1] if len(sys.argv) > 1 else "experiments/configs/main.yaml")
+settings = yaml.safe_load(CONFIG.read_text())
+RESULTS = Path(settings.get("results_dir", "experiments/results"))
 OUT = Path("research/figures")
 OUT.mkdir(parents=True, exist_ok=True)
+PREFIX = "" if RESULTS.name == "results" else f"{RESULTS.name}_"   # keeps the original names
 
-settings = yaml.safe_load(Path("experiments/configs/main.yaml").read_text())
 START = settings["shift_start"]
-baseline = json.loads(Path("reports/baseline_metrics.json").read_text())["roc_auc"]
+baseline = json.loads(Path("reports/baseline_metrics.json").read_text())["roc_auc"]   # logreg
 harm_line = baseline - settings["harm_auc_drop"]
 
 batches = pd.read_csv(RESULTS / "batch_results.csv")
@@ -41,6 +44,7 @@ plt.rcParams.update({
 
 
 def save(fig, name):
+    name = PREFIX + name
     for ext in ("png", "pdf"):
         fig.savefig(OUT / f"{name}.{ext}")
     plt.close(fig)

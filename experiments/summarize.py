@@ -2,6 +2,7 @@
 
     python experiments/summarize.py
 """
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -9,9 +10,10 @@ import yaml
 
 from driftguard.scoring import alert_scores, detection_delay, false_alerts_per_100
 
-RESULTS = Path("experiments/results")
+CONFIG = Path(sys.argv[1] if len(sys.argv) > 1 else "experiments/configs/main.yaml")
+settings = yaml.safe_load(CONFIG.read_text())
+RESULTS = Path(settings.get("results_dir", "experiments/results"))
 STRATEGIES = ["none", "quality", "drift", "combined"]
-settings = yaml.safe_load(Path("experiments/configs/main.yaml").read_text())
 start = settings["shift_start"]
 df = pd.read_csv(RESULTS / "batch_results.csv")
 

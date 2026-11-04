@@ -62,3 +62,17 @@ def test_corruption_breaks_the_right_number_of_rows(pool):
     batch = run[2][0]
     assert (batch["sex"] == "Unknown").sum() == 2          # 10 broken rows / 5 kinds
     assert (batch["hours-per-week"] == "forty").sum() == 2
+
+
+
+def test_real_shift_uses_the_target_population(pool, tmp_path):
+    target = pool.copy()
+    target["age"] = 99                       # an obviously different population
+    path = tmp_path / "target.csv"
+    target.to_csv(path, index=False)
+    run = make_run(pool, {"type": "real_shift", "target_pool": str(path)}, 0, SETTINGS)
+    assert [t["input_changed"] for _, t in run] == [False, False, True, True]
+    assert (run[1][0]["age"] != 99).all()    # before the change: the source population
+    assert (run[2][0]["age"] == 99).all()    # after: rows from the target population
+    rows = pd.concat([run[2][0], run[3][0]])
+    assert not rows.duplicated().any()       # the two changed batches don't share rows    

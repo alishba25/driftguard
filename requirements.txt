@@ -13,3 +13,4 @@ pyyaml>=6.0
 streamlit>=1.40
 plotly>=5.24
 matplotlib>=3.8
+folktables>=0.0.12

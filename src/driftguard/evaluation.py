@@ -9,12 +9,12 @@ from sklearn.metrics import (accuracy_score, average_precision_score, f1_score,
 from driftguard import config
 
 
-def load_model():
-    return joblib.load(config.MODEL_PATH)
+def load_model(model_name: str = "logreg"):
+    return joblib.load(config.model_path(model_name))
 
 
-def load_baseline() -> dict:
-    with open(config.BASELINE_METRICS_PATH) as f:
+def load_baseline(model_name: str = "logreg") -> dict:
+    with open(config.baseline_path(model_name)) as f:
         return json.load(f)
 
 
