@@ -1,0 +1,30 @@
+# Phase 7: real distribution shift. Models trained on California 2018;
+# batches 8-15 are real people from another state in the same year.
+
+dataset: acs
+models: [logreg, gbm]
+results_dir: experiments/results/acs_states
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+n_batches: 16
+batch_size: 600
+shift_start: 8
+harm_auc_drop: 0.03
+
+scenarios:
+  A_stable:                 # more California people: should stay quiet
+    type: stable
+  B_corruption:             # same corruption as Adult, on ACS columns
+    type: corruption
+    rate: 0.05
+  S_NY:
+    type: real_shift
+    target_pool: data/acs/target_NY.csv
+  S_TX:
+    type: real_shift
+    target_pool: data/acs/target_TX.csv
+  S_FL:
+    type: real_shift
+    target_pool: data/acs/target_FL.csv
+  S_PR:
+    type: real_shift
+    target_pool: data/acs/target_PR.csv
