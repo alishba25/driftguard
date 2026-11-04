@@ -1,0 +1,45 @@
+# Phase 7: the Phase 4 experiment with 20 seeds and two models.
+# Every setting except seeds, models and results_dir is identical to main.yaml.
+# Fixed on 03-11-2026, BEFORE the first run.
+
+dataset: adult
+models: [logreg, gbm]       # first model is the primary one
+results_dir: experiments/results/adult_20seeds
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+n_batches: 16
+batch_size: 600
+shift_start: 8
+harm_auc_drop: 0.03
+
+scenarios:
+  A_stable:
+    type: stable
+  B_corruption:
+    type: corruption
+    rate: 0.05
+  C_shift_low:
+    type: numeric_shift
+    column: hours-per-week
+    amount: 2
+  C_shift_mid:
+    type: numeric_shift
+    column: hours-per-week
+    amount: 5
+  C_shift_high:
+    type: numeric_shift
+    column: hours-per-week
+    amount: 10
+  D_sudden:
+    type: resample
+    column: marital-status
+    value: Married-civ-spouse
+    share: 0.7
+  E_gradual:
+    type: gradual_shift
+    column: age
+    max_amount: 10
+  F_concept:
+    type: label_flip
+    column: marital-status
+    value: Married-civ-spouse
+    flip_rate: 0.35
