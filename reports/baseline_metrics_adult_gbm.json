@@ -1,0 +1,11 @@
+{
+  "accuracy": 0.8729,
+  "precision": 0.7767,
+  "recall": 0.6577,
+  "f1": 0.7122,
+  "roc_auc": 0.9288,
+  "pr_auc": 0.8293,
+  "positive_rate_in_test": 0.2393,
+  "n_test": 9768,
+  "seed": 42
+}

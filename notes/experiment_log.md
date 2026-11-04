@@ -118,3 +118,43 @@ than separately. Bonferroni (p < 0.05/12 ≈ 0.0042 per feature) cut false alert
 - Combined uses no performance signal (labels are rarely available at once)
 - Only one shift size per feature for E and D; the C result suggests severity
   should also be tested on a smoother feature (e.g. age) before generalising
+
+## E4: 20 seeds, two models (Adult)
+
+- Date: 03-11-2026
+- Config: experiments/configs/adult_20seeds.yaml (committed 04-11-2026, before the run)
+- Question: do the Phase 4 findings hold with 4x the seeds and a second, non-linear model?
+- Models: logistic regression (baseline ROC-AUC 0.9056, harm below 0.8756);
+  gradient boosting, HistGradientBoostingClassifier (baseline 0.9288, harm below 0.8988)
+- Batches: 2,560 (8 scenarios x 20 seeds x 16)
+- Check: seeds 0-4 match Phase 4 exactly (MATCH)
+- Intervals: 95%, bootstrap over seeds, 2,000 resamples (experiments/analyze.py)
+
+Results (drift-only; combined made identical decisions):
+- Recall on input changes 0.979 [0.975, 0.983]; precision 0.920 [0.890, 0.950]
+- False alerts 5.1 per 100 quiet batches [3.1, 7.3]. The 5-seed run's 1.0 was a
+  low draw; 5 per 100 matches the 5% per-batch budget set by the Bonferroni correction
+- Drift alerts on harmful batches: logreg 0.119 [0.100, 0.141], gbm 0.072 [0.058, 0.088]
+- Harmful batches that got a drift alert: logreg 0.422 [0.364, 0.477], gbm 0.327 [0.275, 0.376]
+- Harmful batches: logreg 289, gbm 226 (of 2,560)
+- D_sudden harm share: logreg 0.644 [0.556, 0.731], gbm 0.369 [0.294, 0.444]
+  (mean ROC-AUC 0.870 and 0.902; drops of 0.036 and 0.027)
+- F_concept harm share: logreg 0.994, gbm 1.000; drift alert rate 0.056, the same as A_stable
+- E_gradual: drift alert rate 0.875, mean detection delay 1.0 batch, no run missed
+- Corruption: drift-only blamed a shift in sex in all 160 corrupted batches
+  (sex alone in 149); combined reported a quality problem in all 160
+
+Harm-threshold sensitivity (0.02 / 0.03 / 0.05):
+- Harmful batches: logreg 463 / 289 / 157; gbm 389 / 226 / 162
+- Drift alerts on harmful batches: logreg 0.201 / 0.119 / 0.027; gbm 0.160 / 0.072 / 0.011
+- D harm share: logreg 0.900 / 0.644 / 0.131; gbm 0.744 / 0.369 / 0.012
+- F harm share: logreg 1.000 / 0.994 / 0.850; gbm 1.000 / 1.000 / 1.000
+
+What it means: the Phase 4 findings hold with 20 seeds and a second model. At most
+one drift alert in five coincided with harm under any threshold or model, and the
+label-relationship change harmed both models while drift alerts stayed at the
+stable-data rate. Whether the marital-status shift counts as harmful depends on
+both the model (gbm was harmed about half as often) and the threshold, even though
+the alerts were identical: a drift alert describes the data, while harm depends on
+the model. The 5-seed false-alert rate (1.0 per 100) was an underestimate; the
+expected rate under the chosen correction is about 5 per 100.  
