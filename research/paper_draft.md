@@ -245,7 +245,7 @@ raises a quality alert, or a drift alert computed on the batch's valid rows.
 The first, *input changed*, is known by construction: it is false for A, for
 F, and for every batch before batch 8. The second, *harmful*, is true when the
 model's ROC-AUC on the batch, computed with its true labels and with no rows
-removed, is more than 0.03 below the baseline of 0.906 (that is, below 0.876).
+removed,is more than 0.03 below the model's baseline ROC-AUC on the test split,0.9056 (reported as 0.906 elsewhere), that is, below 0.8756.
 We use ROC-AUC rather than PR-AUC because PR-AUC also moves when the share of
 high earners changes, as it does in D, even when the model ranks people
 equally well. On unchanged batches ROC-AUC averaged 0.904 with a standard
@@ -280,7 +280,7 @@ Table 3 summarises each strategy against both ground truths.
 | Combined | 0.975 | 0.983 | 1.0 | 15% (35 of 238) | 35 of 81 |
 
 "Quiet" batches are the 400 whose inputs were not changed. "Harmful" means a
-ROC-AUC more than 0.03 below the 0.906 baseline.
+ROC-AUC below 0.8756 (0.03 below the 0.9056 baseline).
 
 Drift-only and combined monitoring made identical alert decisions on every
 batch. Both detected input changes with high recall and precision, but most

@@ -160,9 +160,8 @@ Two separate truths are recorded for every batch and never combined:
 1. input_changed: whether the scenario altered the input data (known by
    construction; False for A, for F, and for every batch before batch 8)
 2. harmful: whether the model's ROC-AUC on the batch, computed with its true
-   labels, was more than 0.03 below the baseline (0.906), i.e. below 0.876.
-   The batch is scored as an unmonitored pipeline would score it, with no
-   rows removed
+   labels, was more than 0.03 below the baseline (0.9056, reported as 0.906), i.e. below 0.8756.
+   The batch is scored as an unmonitored pipeline would score it, with no rows removed.
 
 ROC-AUC rather than PR-AUC defines harm because PR-AUC also moves when the
 share of >50K earners changes (as it does in D), even if the model ranks
