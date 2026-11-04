@@ -1,0 +1,9 @@
+strategy,said,batches
+drift-only,distribution changed in: SEX,149
+drift-only,distribution changed in: RELP;SEX,4
+drift-only,distribution changed in: OCCP;SEX,2
+drift-only,distribution changed in: AGEP;SEX,2
+drift-only,distribution changed in: SCHL;SEX,2
+drift-only,distribution changed in: SEX;RAC1P,1
+combined,quality problem,160
+combined,also drift in valid rows,10

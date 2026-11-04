@@ -1,0 +1,7 @@
+scenario,mean_roc_auc_after,harmful_share_after,none_alert_rate_after,none_delay,none_missed_runs,quality_alert_rate_after,quality_delay,quality_missed_runs,drift_alert_rate_after,drift_delay,drift_missed_runs,combined_alert_rate_after,combined_delay,combined_missed_runs
+A_stable,0.8932473360901664,0.0125,0.0,,,0.0,,,0.05625,,,0.05625,,
+B_corruption,0.8857907652874847,0.03125,0.0,,20.0,1.0,0.0,0.0,1.0,0.0,0.0,1.0,0.0,0.0
+S_NY,0.8702707162026855,0.2625,0.0,,20.0,0.13125,1.8,5.0,1.0,0.0,0.0,1.0,0.0,0.0
+S_TX,0.8762835984044484,0.14375,0.0,,20.0,0.0,,20.0,1.0,0.0,0.0,1.0,0.0,0.0
+S_FL,0.8627174521512678,0.45625,0.0,,20.0,0.0,,20.0,1.0,0.0,0.0,1.0,0.0,0.0
+S_PR,0.8377971923815057,0.875,0.0,,20.0,0.0,,20.0,1.0,0.0,0.0,1.0,0.0,0.0
