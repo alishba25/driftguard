@@ -1,0 +1,4 @@
+model,harm_drop,harmful_batches,drift_alerts_on_harmful,harmful_batches_alerted,harm_share_A_stable,harm_share_B_corruption,harm_share_C_shift_low,harm_share_C_shift_mid,harm_share_C_shift_high,harm_share_D_sudden,harm_share_E_gradual,harm_share_F_concept
+logreg,0.02,122,0.2059,0.4016,0.05,0.1,0.05,0.05,0.05,0.9,0.05,1.0
+logreg,0.03,81,0.1471,0.4321,0.025,0.05,0.025,0.025,0.025,0.675,0.025,0.975
+logreg,0.05,35,0.021,0.1429,0.0,0.0,0.0,0.0,0.0,0.1,0.0,0.775

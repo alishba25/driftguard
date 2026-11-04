@@ -158,3 +158,70 @@ both the model (gbm was harmed about half as often) and the threshold, even thou
 the alerts were identical: a drift alert describes the data, while harm depends on
 the model. The 5-seed false-alert rate (1.0 per 100) was an underestimate; the
 expected rate under the chosen correction is about 5 per 100.  
+
+## E5: real shift across US states (Folktables ACSIncome)
+
+- Question: on real, naturally occurring population differences, how often do
+  drift alerts coincide with actual harm?
+- Data: ACSIncome, 2018 American Community Survey. Source: California
+  (train 30,000 / test 10,000 / monitor pool 10,000; 41.4% earn >50K).
+  Targets: New York, Texas, Florida, Puerto Rico (10,000 rows each)
+- Design: batches 0-7 from the California monitor pool; batches 8-15 real,
+  unmodified people from one target state. Plus a stable scenario and the same
+  5% corruption scenario as Adult
+- Models: logistic regression (baseline ROC-AUC 0.8922, harm below 0.8622);
+  gradient boosting (baseline 0.8987, harm below 0.8687)
+- Batches: 1,920 (6 scenarios x 20 seeds x 16)
+- Intervals: 95%, bootstrap over seeds, 2,000 resamples (experiments/analyze.py)
+
+Results after the change (drift-only and combined made identical decisions):
+
+| Batches 8-15 from | Drift alerts | Harmed: logreg | Harmed: gbm | Mean ROC-AUC logreg / gbm |
+| --- | --- | --- | --- | --- |
+| California (A_stable) | 0.056 [0.031, 0.081] | 0.012 | 0.019 | 0.893 / 0.898 |
+| California, corrupted (B) | 1.00 | 0.031 | 0.025 | 0.886 / 0.898 |
+| Texas | 1.00 | 0.144 [0.100, 0.188] | 0.175 [0.125, 0.225] | 0.876 / 0.882 |
+| New York | 1.00 | 0.262 [0.206, 0.319] | 0.325 [0.256, 0.394] | 0.870 / 0.875 |
+| Florida | 1.00 | 0.456 [0.388, 0.531] | 0.681 [0.619, 0.744] | 0.863 / 0.862 |
+| Puerto Rico | 1.00 | 0.875 [0.812, 0.938] | 0.875 [0.819, 0.925] | 0.838 / 0.839 |
+
+- Drift detection: recall on input changes 1.000, precision 0.921 [0.895, 0.949],
+  false alerts 6.2 per 100 quiet batches [3.8, 8.4] (Adult: 5.1; expected about
+  5 under the Bonferroni correction). Every state was detected at its first
+  changed batch in every run
+- Drift alerts on harmful batches: logreg 0.326 [0.297, 0.357], gbm 0.383 [0.358, 0.409]
+- Harmful batches that got a drift alert: logreg 0.993 [0.983, 1.000], gbm 0.991 [0.980, 1.000]
+- Features flagged: race and place of birth drifted in every New York, Texas
+  and Florida batch; Puerto Rico differed in occupation, marital status, class
+  of worker and hours worked
+- Corruption: drift-only blamed a shift in SEX in all 160 corrupted batches
+  (SEX alone in 149); combined reported a quality problem in all 160, the same
+  pattern as on Adult
+- Unseen categories: every state had some rows rejected as categories absent
+  from the California training data (mean 0.2-0.3% of rows in TX, FL, PR;
+  0.75% in NY, max 1.8%). Only New York crossed the 1% quality-alert threshold:
+  21 batches, in 15 of 20 runs. Column(s): ____
+
+Harm-threshold sensitivity (0.02 / 0.03 / 0.05):
+- Harmful batches: logreg 463 / 285 / 117; gbm 482 / 336 / 144
+- Drift alerts on harmful batches: logreg 0.491 / 0.326 / 0.135; gbm 0.518 / 0.383 / 0.166
+- Harm share, logreg: TX 0.331 / 0.144 / 0.000; NY 0.538 / 0.262 / 0.031;
+  FL 0.706 / 0.456 / 0.094; PR 0.944 / 0.875 / 0.600
+- Harm share, gbm: TX 0.369 / 0.175 / 0.000; NY 0.544 / 0.325 / 0.025;
+  FL 0.894 / 0.681 / 0.206; PR 0.944 / 0.875 / 0.669
+- The ranking of states by harm (TX < NY < FL < PR) is the same at every
+  threshold for both models; only Puerto Rico stays mostly harmful at 0.05
+
+What it means: on real geographic shift, drift detection flagged every batch
+from every state, so it missed almost no harmful batches. But the alert was
+identical whether a state harmed the model in 1 batch in 7 (Texas) or 7 in 8
+(Puerto Rico), and most drift alerts fell on batches the model handled
+normally (about half even under the loosest threshold). On Adult, drift
+alerts missed the most harmful change entirely. The two datasets fail in
+opposite directions but support one conclusion: a drift alert shows that the
+population changed, not whether or how much the model was harmed. Harm also
+depends on the model: gradient boosting was harmed less than logistic
+regression by Adult's marital-status shift but more by Florida, under
+identical alerts. Real data also blurred the line between corruption and
+change: valid answers unseen in California were rejected as invalid, enough
+to trigger quality alerts for New York.

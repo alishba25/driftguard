@@ -1,0 +1,16 @@
+strategy,model,metric,estimate,ci_low,ci_high
+quality,-,recall_changed,0.1667,0.1667,0.1667
+quality,-,precision_changed,1.0,1.0,1.0
+quality,-,false_alerts_per_100,0.0,0.0,0.0
+quality,logreg,precision_harmful,0.05,0.0,0.1
+quality,logreg,recall_harmful,0.0247,0.0,0.0445
+drift,-,recall_changed,0.975,0.9667,0.9792
+drift,-,precision_changed,0.9832,0.9667,1.0
+drift,-,false_alerts_per_100,1.0,0.0,2.0
+drift,logreg,precision_harmful,0.1471,0.0894,0.1975
+drift,logreg,recall_harmful,0.4321,0.3165,0.5422
+combined,-,recall_changed,0.975,0.9667,0.9792
+combined,-,precision_changed,0.9832,0.9667,1.0
+combined,-,false_alerts_per_100,1.0,0.0,2.0
+combined,logreg,precision_harmful,0.1471,0.0894,0.1975
+combined,logreg,recall_harmful,0.4321,0.3165,0.5422
