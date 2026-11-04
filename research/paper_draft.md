@@ -1,4 +1,4 @@
-# Do Monitoring Alerts Mean Model Harm? A Controlled Comparison of Data-Quality Checks and Drift Detection on Tabular Data
+# Do Monitoring Alerts Mean Model Harm? Separating Distribution Change, Data Corruption and Performance Harm in Tabular ML Monitoring
 
 Alishba Ansari
 Independent researcher, Mumbai, India
@@ -8,25 +8,29 @@ alishba25ansari@gmail.com
 
 ## Abstract
 
-We separate three questions that monitoring evaluations often merge: whether inputs changed, whether they are corrupted, and whether the model was harmed.Machine-learning systems can receive input data that is malformed or that
-differs from the data used to train the model, but a monitoring alert does not
-necessarily indicate that the model's performance has degraded. This paper
-compares four monitoring strategies: no monitoring, data-quality checks only,
-statistical drift detection only, and both combined, on a logistic regression
-model for the UCI Adult income task. We evaluate every alert against two
-distinct ground truths across 640 batches of data, covering eight controlled
-scenarios and five random seeds: (1) whether the input data changed, and
-(2) whether the model's ROC-AUC fell by more than 0.03. Drift detection
-reported 97.5% of changes in the input data with 1 false alert per 100
-unchanged batches, but only 35 of its 238 alerts (15%) occurred on batches
-where the model was actually harmed. A change in the label relationship harmed
-the model in 39 of 40 batches, while drift alerts stayed at the level observed
-on stable data. Without a quality gate, drift detection attributed all 40
-corrupted batches to a change in the distribution of the sex feature; combining
-both methods left detection unchanged but correctly identified the cause as a
-data-quality problem. All results were reproduced exactly in an independent
-containerised rerun. The results show that monitoring the input features alone
-cannot establish whether a model has degraded.
+We separate three questions that monitoring evaluations often merge: whether
+a model's inputs changed, whether they are corrupted, and whether the model
+was harmed. We compare four monitoring strategies (no monitoring, data-quality
+checks only, statistical drift detection only, and both combined) and score
+every alert against each question separately, on two tabular income-prediction
+tasks and two model families, logistic regression and gradient-boosted trees.
+On UCI Adult, eight controlled scenarios over 20 seeds (2,560 batches) cover
+data corruption and sudden, gradual and label-relationship changes. On
+Folktables ACSIncome, models trained on California are monitored on real,
+unmodified people from four other US populations (1,920 batches). Drift
+detection found 98% of controlled input changes and every real one, with about
+5 false alerts per 100 unchanged batches. Yet only 12% [95% CI 10-14%] of its
+alerts on Adult and 33% [30-36%] on ACS fell on batches where logistic
+regression was harmed, meaning its ROC-AUC fell more than 0.03 below baseline.
+A change in the label relationship harmed both models in almost every batch
+while drift alerts stayed at their false-alert rate; conversely, every real
+population triggered an alert on every batch, while the share of harmed
+batches ranged from 14% to 88%. Under identical alerts, which changes harmed
+the model depended on the model. Without a quality gate, drift detection
+attributed every corrupted batch to a shift in one feature; the combined
+strategy named the correct cause. These conclusions hold for harm thresholds of
+0.02 and 0.05, except whether one moderate shift counts as harmful. Input
+monitoring shows that data changed, not whether the model degraded.
 
 ## 1. Introduction
 
@@ -34,39 +38,40 @@ A deployed machine-learning model keeps producing predictions regardless of
 the data it receives. That data may be malformed (for example, missing values,
 impossible numbers or unknown categories) or valid but different from the
 training data (for example, because the population has changed). Many of these
-changes do not harm the model's predictions, while some do. Monitoring systems
-therefore have to answer two separate questions:
+changes do not harm the model's predictions, while some do. A monitoring
+system can therefore be asked three separate questions:
 
-1. Has the data changed?
-2. Does the change harm the model?
+1. Have the inputs changed?
+2. Are the inputs corrupted?
+3. Has the model actually got worse?
 
-These are three different questions, and we keep them separate throughout.
-A *distribution change* is any difference between incoming inputs and the
-training data, such as a new mix of people. *Data corruption* is input that
-is invalid: missing required values, impossible numbers, unknown categories,
-duplicated records. *Performance harm* is a measurable drop in the model's
-predictive quality on the batch. A drift detector answers the first question,
-a data-quality gate the second, and only labels can answer the third. The
-three are easily conflated: corrupted values can look like a distribution
-change to a drift test, a large distribution change can leave a model's
-performance intact, and a change in the relationship between inputs and
-labels can harm the model while leaving the inputs, and so every input
-monitor, unchanged.
+We keep these three questions separate throughout. A *distribution change* is
+any difference between incoming inputs and the training data, such as a new
+mix of people. *Data corruption* is input that is invalid: missing required
+values, impossible numbers, unknown categories, duplicated records.
+*Performance harm* is a measurable drop in the model's predictive quality on
+the batch. A drift detector answers the first question, a data-quality gate
+the second, and only labels can answer the third. The three are easily
+conflated: corrupted values can look like a distribution change to a drift
+test, a large distribution change can leave a model's performance intact, and
+a change in the relationship between inputs and labels can harm the model
+while leaving the inputs, and so every input monitor, unchanged.
 
 In production ML systems, it is common practice to validate data quality and to
 monitor statistical drift [Breck et al. 2019; Schelter et al. 2018]. Simple
 per-feature drift tests have been found to be effective detectors of dataset
 shift [Rabanser et al. 2019], and many shifts are harmless, so detecting
 harmful shifts requires knowledge of model performance [Podkopaev & Ramdas
-2022]. In the work we reviewed, we did not find a controlled comparison of
-quality-only, drift-only and combined monitoring in which every alert is scored
-against both input change and observed performance harm.
+2022]. In the work we reviewed, we did not find a comparison of quality-only,
+drift-only and combined monitoring in which every alert is scored against
+input change, corruption and observed performance harm on the same batches.
 
 This paper asks: how effectively can data-quality checks combined with drift
 detection distinguish harmful distribution changes from harmless changes in
 machine-learning input data? We build a minimal end-to-end batch pipeline and
-run a controlled experiment with known changes, so that each alert can be
-checked against what actually happened.
+run two experiments: a controlled experiment with known changes, so that each
+alert can be checked against what actually happened, and a real-shift
+experiment in which the change is a genuine difference between populations.
 
 Our contribution is empirical. The individual components we use (per-feature
 drift tests, rule-based data validation, and the observation that drift and
@@ -86,18 +91,20 @@ them against each other:
    gradient-boosted trees, 20 seeds per scenario, 95% confidence intervals from
    a bootstrap over seeds, and a sensitivity analysis of the harm threshold.
 4. **Full reproducibility.** Configurations committed before each run, and
-   code that rebuilds every number and figure, verified by an independent
-   containerised rerun.
+   code that rebuilds every number and figure. The original experiment was
+   reproduced exactly by an independent containerised rerun.
 
 We test four hypotheses:
 
-- **H1:** A data-quality gate catches malformed, missing, duplicated or
-  out-of-range records that drift detection alone may not classify correctly.
-- **H2:** Combining quality and drift monitoring is more informative than
-  either alone, though it may not be better on every measure.
-- **H3:** Drift detection depends on the type and magnitude of the shift.
-- **H4:** Feature drift does not always correspond to poorer predictive
-  performance.
+- **H1 (corruption):** A data-quality gate catches malformed, missing,
+  duplicated or out-of-range records that drift detection alone may not
+  classify correctly.
+- **H2 (combining monitors):** Combining quality and drift monitoring is more
+  informative than either alone, though it may not be better on every measure.
+- **H3 (change):** Drift detection depends on the type and magnitude of the
+  shift.
+- **H4 (change vs. harm):** Feature drift does not always correspond to poorer
+  predictive performance.
 
 ## 2. Related work
 
@@ -161,46 +168,77 @@ of the UCI Adult dataset. We use Folktables for our real-shift experiment.
 
 ## 3. Methods
 
-The thresholds and drift-detection methods were fixed, and the experiment
-configuration was committed to version control, before any experimental
-scenario was run.
+All thresholds and drift-detection methods were fixed, and each experiment's
+configuration was committed to version control, before that experiment's
+first run.
 
 ### 3.1 Data and splits
 
-We use the UCI Adult (Census Income) dataset [Becker & Kohavi 1996], where
-the task is to predict whether a person's income exceeds $50K. Cleaning was
-limited to stripping spaces from text values, converting "?" to missing
-values, and removing a trailing full stop from some income labels, leaving
-48,842 rows of which 23.9% earn more than $50K.
+**UCI Adult.** We use the UCI Adult (Census Income) dataset [Becker & Kohavi
+1996], where the task is to predict whether a person's income exceeds $50K.
+Cleaning was limited to stripping spaces from text values, converting "?" to
+missing values, and removing a trailing full stop from some income labels,
+leaving 48,842 rows of which 23.9% earn more than $50K.
 
 The data was split, stratified by income with a fixed seed, into a training
 split (29,305 rows, 60%), a test split (9,768 rows, 20%) and a monitor pool
-(9,769 rows, 20%). The training split is used to fit the model, as the
+(9,769 rows, 20%). The training split is used to fit the models, as the
 reference for drift detection, and to define allowed categories; the test
-split measures the baseline model; and every incoming batch is built from
+split measures each model's baseline; and every incoming batch is built from
 the monitor pool. The three splits share no rows.
 
-### 3.2 Model
+**Folktables ACSIncome.** For real distribution shift we use the ACSIncome
+task from Folktables [Ding et al. 2021]: 2018 American Community Survey data,
+the same prediction target (income above $50,000), and ten features: age,
+class of worker, education level, marital status, occupation, place of birth,
+relationship, hours worked per week, sex and race. We sample 50,000 California
+residents and split them 60/20/20 into training, test and monitor-pool sets
+(stratified, seed 42), as for Adult; 41.4% of them earn more than $50,000. As
+target populations we sample 10,000 residents each from New York, Texas,
+Florida and Puerto Rico. Census answer codes are treated as categories; age,
+education level and hours worked as numbers.
 
-We use logistic regression [Pedregosa et al. 2011] inside a single pipeline
-with its preprocessing. The five numeric features (age, education-num,
-capital-gain, capital-loss, hours-per-week) are median-imputed and
-standardised; the seven categorical features (workclass, marital-status,
-occupation, relationship, race, sex, native-country) are imputed with the most
-frequent value and one-hot encoded, ignoring categories not seen in training.
-We exclude fnlwgt, a census sampling weight, and education, which duplicates
-education-num. All preprocessing is learned from the training split only. On
-the test split the baseline model achieved ROC-AUC 0.906, PR-AUC 0.761,
-accuracy 0.852, precision 0.737, recall 0.596 and F1 0.659.
+### 3.2 Models
+
+We use two model families [Pedregosa et al. 2011], each in a single pipeline
+with its preprocessing, learned from the training split only.
+
+*Logistic regression.* Numeric features are median-imputed and standardised;
+categorical features are imputed with the most frequent value and one-hot
+encoded, ignoring categories not seen in training. On Adult the five numeric
+features are age, education-num, capital-gain, capital-loss and
+hours-per-week, and the seven categorical features are workclass,
+marital-status, occupation, relationship, race, sex and native-country. We
+exclude fnlwgt, a census sampling weight, and education, which duplicates
+education-num.
+
+*Gradient boosting.* To test whether the findings depend on the model family,
+we also train a gradient-boosted tree ensemble (HistGradientBoostingClassifier,
+default settings, seed 42), with median imputation for numeric features and
+ordinal encoding for categorical ones.
+
+Table 2 gives each model's baseline on its test split. On Adult, logistic
+regression also reached PR-AUC 0.761, accuracy 0.852 and F1 0.659, and
+gradient boosting PR-AUC 0.829, accuracy 0.873 and F1 0.712.
+
+**Table 2.** Baseline ROC-AUC on the test split, and the harm threshold
+derived from it (Section 3.5).
+
+| Dataset | Model | Baseline ROC-AUC | Harmful if batch ROC-AUC below |
+| --- | --- | --- | --- |
+| Adult | Logistic regression | 0.9056 | 0.8756 |
+| Adult | Gradient boosting | 0.9288 | 0.8988 |
+| ACSIncome (CA) | Logistic regression | 0.8922 | 0.8622 |
+| ACSIncome (CA) | Gradient boosting | 0.8987 | 0.8687 |
 
 ### 3.3 Data-quality checks
 
 Each batch is first read as text, so that converting values to numbers is
-itself a check rather than a silent step. Seven rules are applied (Table 1).
+itself a check rather than a silent step. Seven rules are applied (Table 3).
 Critical failures make the whole batch unusable; errors cause only the
 affected rows to be rejected.
 
-**Table 1.** Data-quality rules.
+**Table 3.** Data-quality rules, as configured for Adult.
 
 | Rule | Fails when | Severity |
 | --- | --- | --- |
@@ -213,8 +251,11 @@ affected rows to be rejected.
 | Duplicate row | An exact copy of an earlier row in the batch (first copy kept) | Error |
 
 Ranges were set from what is plausible rather than from the training minimum
-and maximum, so that normal but rare values are not rejected. Every rule is
-recorded for every batch, including rules with no failures.
+and maximum, so that normal but rare values are not rejected. For ACSIncome
+the same rules apply to its ten features, with ranges of [17, 99] for age,
+[1, 24] for education level and [1, 99] for hours worked, and missing values
+allowed only in class of worker. Every rule is recorded for every batch,
+including rules with no failures.
 
 ### 3.4 Drift detection
 
@@ -228,12 +269,14 @@ in missing values is visible, and categories with less than 1% of the
 reference are grouped together, because chi-square is unreliable for
 categories expected only a few times per batch.
 
-With 12 features tested per batch, a per-test threshold of 0.05 would raise
+With k features tested per batch, a per-test threshold of 0.05 would raise
 frequent false alarms. We therefore apply a Bonferroni correction, flagging a
-feature only when its p-value is below 0.05 / 12 = 0.0042. In a preliminary
-test on 100 stable 1,000-row batches, this reduced batches with false alerts
-from 37 to 3. Because the features are correlated, the correction is stricter
-than necessary.
+feature only when its p-value is below 0.05 / k: 0.0042 for Adult's 12
+features and 0.005 for ACSIncome's 10. This targets a false-alert rate of at
+most about 5% per unchanged batch. In a preliminary test on 100 stable
+1,000-row Adult batches, the correction reduced batches with false alerts from
+37 to 3. Because the features are correlated, the correction is stricter than
+necessary.
 
 A quality alert is raised when a batch is unusable or more than 1% of its
 rows are rejected; a drift alert is raised when at least one feature drifts,
@@ -245,17 +288,18 @@ naming every drifted feature.
 order, built by shuffling the monitor pool with the run's seed and cutting
 consecutive, non-overlapping batches. A scenario's change is applied from
 batch 8 onwards, so batches 0-7 are always unchanged. Each scenario is run
-with five seeds, giving 8 scenarios x 5 seeds x 16 batches = 640 batches.
-For a given seed, every scenario starts from the same base batches, so
-differences between scenarios are caused by the applied change rather than by
-which rows were drawn.
+with 20 seeds. For a given seed, every scenario starts from the same base
+batches, so differences between scenarios are caused by the applied change
+rather than by which rows were drawn.
 
-**Scenarios.** Table 2 lists the eight scenarios. Scenarios C, D and E keep
-every row valid, so they test drift detection rather than the quality checks.
-Each applied change and its severity is recorded per batch as ground truth,
-separately from anything the monitors receive.
+**Controlled scenarios (Adult).** Table 4 lists the eight scenarios, giving
+8 x 20 x 16 = 2,560 batches. Scenarios C, D and E keep every row valid, so
+they test drift detection rather than the quality checks. Each applied change
+and its severity is recorded per batch as ground truth, separately from
+anything the monitors receive. An earlier run of the same design with five
+seeds is identical to seeds 0-4 of this run.
 
-**Table 2.** Scenarios, applied to batches 8-15.
+**Table 4.** Controlled scenarios on Adult, applied to batches 8-15.
 
 | Scenario | Change applied | Inputs changed? |
 | --- | --- | --- |
@@ -265,6 +309,13 @@ separately from anything the monitors receive.
 | D_sudden | Batch rebuilt to be 70% Married-civ-spouse (about 46% in the full dataset) | Yes |
 | E_gradual | age increased by 1.25 years at batch 8, growing linearly to 10 years at batch 15, clipped to [17, 100] | Yes |
 | F_concept | Income label flipped for 35% of Married-civ-spouse rows; inputs unchanged | No |
+
+**Real-shift scenarios (ACSIncome).** In each run, batches 0-7 are drawn from
+the California monitor pool and batches 8-15 from one target state's sample,
+without any modification; each run takes its own non-overlapping 4,800 rows of
+the target sample. We also run a stable scenario and the same 5% corruption
+scenario as for Adult, giving 6 scenarios x 20 seeds x 16 batches = 1,920
+batches.
 
 **What the monitors see.** Each batch is written to CSV and read back
 through the pipeline's own reader, so monitors receive exactly what a real
@@ -277,50 +328,64 @@ are used only to compute the ground truth.
 numeric columns become missing and invalid categories are kept. *Combined*
 raises a quality alert, or a drift alert computed on the batch's valid rows.
 
-**Ground truth.** Two truths are recorded for every batch and never combined.
-The first, *input changed*, is known by construction: it is false for A, for
-F, and for every batch before batch 8. The second, *harmful*, is true when the
-model's ROC-AUC on the batch, computed with its true labels and with no rows
-removed,is more than 0.03 below the model's baseline ROC-AUC on the test split,0.9056 (reported as 0.906 elsewhere), that is, below 0.8756.
+**Ground truth.** Separate truths are recorded for every batch and never
+combined. *Input changed* is known by construction: it is false for A, for F,
+and for every batch before batch 8. *Corrupted* is true for batches 8-15 of B.
+*Harmful* is recorded separately for each model: a batch is harmful for a
+model when that model's ROC-AUC on the batch, computed with its true labels
+and with no rows removed, is more than 0.03 below its own baseline ROC-AUC on
+the test split (Table 2). For Adult logistic regression the baseline is 0.9056
+(0.906 when rounded), so harmful means below 0.8756. Monitoring alerts do not depend on the model, so the two models share
+the same alerts and differ only in which batches are harmful.
+
 We use ROC-AUC rather than PR-AUC because PR-AUC also moves when the share of
 high earners changes, as it does in D, even when the model ranks people
-equally well. On unchanged batches ROC-AUC averaged 0.904 with a standard
-deviation of 0.011, so the threshold lies about 2.6 standard deviations below
-normal.
+equally well. Over the 320 stable Adult batches, logistic regression's ROC-AUC
+averaged 0.906 with a standard deviation of 0.013, so the threshold lies about
+2.4 standard deviations below normal (2.4-2.8 for the other three
+dataset-model pairs).
 
-**Metrics.** We report alert precision, recall and F1 against each ground
-truth separately, treating precision as undefined for a strategy that raises
-no alerts; false alerts per 100 batches whose inputs did not change (400
-batches); detection delay, the number of batches from batch 8 to a run's first
-alert, averaged over runs that alerted, with missed runs counted separately;
-the mean ROC-AUC and share of harmful batches after the change; which cause
-each strategy reported for corrupted batches; and monitoring runtime.
+**Uncertainty.** We report 95% confidence intervals from a bootstrap over
+seeds (2,000 resamples). Each seed is resampled as a whole run, because
+batches within a seed are not independent: under the paired design, every
+scenario starts from the same base batches. The harm threshold of 0.03 was
+fixed in advance; we report 0.02 and 0.05 as a sensitivity analysis.
+
+**Metrics.** We report alert precision and recall against each ground truth
+separately, treating precision as undefined for a strategy that raises no
+alerts; false alerts per 100 batches whose inputs did not change (1,600 on
+Adult, 1,120 on ACSIncome); detection delay, the number of batches from batch
+8 to a run's first alert, with missed runs counted separately; the mean
+ROC-AUC and share of harmful batches after the change; which cause each
+strategy reported for corrupted batches; and monitoring runtime.
 
 **Comparison with Evidently.** Separately, we compared our detector with
 Evidently's default data drift preset (version 0.7) on one clean and two
-shifted 1,000-row demonstration batches.
+shifted 1,000-row Adult demonstration batches.
 
 ## 4. Results
 
 ### 4.1 Overall comparison
 
-Table 3 summarises each strategy against both ground truths.
+Table 5 summarises each strategy on Adult against the ground truths.
 
-**Table 3.** Strategy performance over all 640 batches.
+**Table 5.** Strategy performance over all 2,560 Adult batches, with 95%
+confidence intervals.
 
-| Strategy | Recall (input change) | Precision (input change) | False alerts / 100 quiet batches | Share of alerts on harmful batches | Harmful batches alerted |
-| --- | --- | --- | --- | --- | --- |
-| None | 0.00 | undefined | 0 | undefined | 0 of 81 |
-| Quality only | 0.17 | 1.00 | 0 | 5% (2 of 40) | 2 of 81 |
-| Drift only | 0.975 | 0.983 | 1.0 | 15% (35 of 238) | 35 of 81 |
-| Combined | 0.975 | 0.983 | 1.0 | 15% (35 of 238) | 35 of 81 |
+| Strategy | Recall (input change) | Precision (input change) | False alerts / 100 quiet batches | Alerts on harmful batches: logreg | Alerts on harmful batches: gbm | Harmful batches alerted (logreg) |
+| --- | --- | --- | --- | --- | --- | --- |
+| None | 0.000 | undefined | 0 | undefined | undefined | 0 of 289 |
+| Quality only | 0.167 | 1.000 | 0 | 0.038 [0.013, 0.063] | 0.006 [0.000, 0.019] | 6 of 289 |
+| Drift only | 0.979 [0.975, 0.983] | 0.920 [0.890, 0.950] | 5.1 [3.1, 7.3] | 0.119 [0.100, 0.141] | 0.072 [0.058, 0.088] | 122 of 289 |
+| Combined | 0.979 [0.975, 0.983] | 0.920 [0.890, 0.950] | 5.1 [3.1, 7.3] | 0.119 [0.100, 0.141] | 0.072 [0.058, 0.088] | 122 of 289 |
 
-"Quiet" batches are the 400 whose inputs were not changed. "Harmful" means a
-ROC-AUC below 0.8756 (0.03 below the 0.9056 baseline).
+"Quiet" batches are the 1,600 whose inputs were not changed. "Harmful" means
+a ROC-AUC more than 0.03 below the model's own baseline (Table 2); 289 batches
+were harmful for logistic regression and 226 for gradient boosting.
 
 Drift-only and combined monitoring made identical alert decisions on every
 batch. Both detected input changes with high recall and precision, but most
-of their alerts fell on batches where the model was not harmed.
+of their alerts fell on batches where neither model was harmed.
 
 ### 4.2 Detection by scenario
 
@@ -331,9 +396,10 @@ an alert, by strategy and scenario.
 
 Quality checks alerted on every corrupted batch (B) and on nothing else
 (Figure 1). Drift detection alerted on every changed batch in B, in all three
-hours-per-week shifts (C) and in the sudden marital-status shift (D); on 85%
-of batches in the gradual age shift (E); and on 5% of batches in the
-label-relationship change (F), the same rate as on stable batches (A).
+hours-per-week shifts (C) and in the sudden marital-status shift (D); on 87.5%
+[85.0, 90.0] of batches in the gradual age shift (E); and on 5.6% [1.9, 9.4]
+of batches in the label-relationship change (F), the same rate as on stable
+batches (A).
 
 Even the smallest shift, +2 hours per week, was detected in every batch. A
 likely explanation is that hours-per-week is strongly concentrated at 40, so
@@ -344,46 +410,56 @@ the KS test detects easily; we did not test this explanation directly.
 
 In the preliminary test, checking 12 features at p < 0.05 without correction
 raised an alert on 37 of 100 stable batches, compared with 3 of 100 with the
-Bonferroni correction. In the main experiment, drift detection raised 4 alerts
-on 400 unchanged batches (1.0 per 100).
+Bonferroni correction. In the main experiment, drift detection raised 82
+alerts on 1,600 unchanged Adult batches, 5.1 per 100 [3.1, 7.3], consistent
+with the 5% per-batch target of the correction. An earlier five-seed run had
+given 1.0 per 100 [0.0, 2.0]; with four times the seeds, that estimate proved
+low. On ACSIncome the rate was 6.2 per 100 [3.8, 8.4] (69 of 1,120).
 
 ### 4.4 Detection delay
 
-![Figure 4](figures/fig4_detection_over_batches.png)
+![Figure 2](figures/fig4_detection_over_batches.png)
 
-**Figure 4.** Share of the five runs with a drift alert at each batch. B and
+**Figure 2.** Share of the 20 runs with a drift alert at each batch. B and
 all three C scenarios follow the same line as D and are omitted.
 
 Sudden changes (B, C, D) were detected at the first changed batch in every
-run (Figure 4). The gradual age shift was never detected at +1.25 years
-(batch 8); four of five runs alerted at +2.5 years and the fifth at +3.75
-years, a mean delay of 1.2 batches. No run missed an input change entirely.
+run (Figure 2). The gradual age shift was detected at +1.25 years (batch 8)
+in 2 of 20 runs, at +2.5 years in 16 and at +3.75 years in 2, a mean delay of
+1.0 batch. No run missed an input change entirely.
 
 ### 4.5 Alerts versus harm
 
-![Figure 2](figures/fig2_alerts_vs_harm.png)
+![Figure 3](figures/adult_20seeds_alerts_vs_harm_logreg.png)
 
-**Figure 2.** For each scenario, the share of changed batches that raised a
-drift alert compared with the share where the model was actually harmed.
+**Figure 3.** For each Adult scenario, the share of batches after the change
+point that raised a drift alert (orange) and the share where logistic
+regression was actually harmed (black), with 95% confidence intervals over 20
+seeds. Figure A1 shows the same for gradient boosting.
 
-![Figure 3](figures/fig3_roc_auc_over_batches.png)
+![Figure 4](figures/fig3_roc_auc_over_batches.png)
 
-**Figure 3.** Mean ROC-AUC across the 16 batches of each run.
+**Figure 4.** Mean logistic-regression ROC-AUC across the 16 batches of each
+run, averaged over 20 seeds.
 
-Only two scenarios harmed the model (Figures 2 and 3). The marital-status
-shift (D) was harmful in 27 of 40 changed batches (mean ROC-AUC 0.870) and
-was detected in all 40. The label-relationship change (F) was harmful in 39
-of 40 batches (mean ROC-AUC 0.842), but drift alerts appeared on only 2,
-matching the false-alert rate. Every other scenario stayed near the baseline
-(mean ROC-AUC 0.902-0.907) despite near-constant drift alerts in B, C and E.
+Only two scenarios harmed the models (Figures 3 and 4). The marital-status
+shift (D) was harmful for logistic regression in 64.4% [55.6, 73.1] of changed
+batches (mean ROC-AUC 0.870) and was detected in all of them. The
+label-relationship change (F) was harmful in 99.4% [98.1, 100] of batches
+(mean ROC-AUC 0.839), but drift alerts appeared on only 5.6%, matching the
+false-alert rate. Every other scenario stayed near the baseline (mean ROC-AUC
+0.902-0.907) despite near-constant drift alerts in B, C and E. Per-scenario
+values for both models are given in Table A1.
 
 ### 4.6 Attribution of corrupted batches
 
-On the 40 corrupted batches, drift-only monitoring alerted every time but
-reported a distribution change in sex in all 40 (alone in 37, alongside other
-features in 3), because the invalid value "Unknown" appeared as a new
-category. The combined strategy reported a quality problem in all 40, with
-drift also present in the valid rows of 3.
+On the 160 corrupted Adult batches, drift-only monitoring alerted every time
+but reported a distribution change in sex in all 160 (alone in 149, alongside
+other features in 11), because the invalid value "Unknown" appeared as a new
+category. The combined strategy reported a quality problem in all 160, with
+drift also present in the valid rows of 10. On ACSIncome the pattern was the
+same: drift-only blamed sex in all 160 corrupted batches (alone in 149), and
+the combined strategy reported a quality problem in all 160.
 
 ### 4.7 Comparison with Evidently
 
@@ -400,33 +476,127 @@ is that a change exists, which explains the disagreements.
 
 ### 4.8 Runtime
 
-Quality checks plus drift tests took about 170 ms per 600-row batch on a
-personal laptop without a GPU.
+Quality checks plus drift tests took about 210 ms per 600-row Adult batch and
+180 ms per ACSIncome batch (medians) on a personal laptop without a GPU.
+
+### 4.9 A second model
+
+Gradient boosting was harmed in 226 of 2,560 Adult batches, against 289 for
+logistic regression, and was less affected by the marital-status shift: D was
+harmful for it in 36.9% [29.4, 44.4] of changed batches (mean ROC-AUC 0.902,
+a drop of 0.027) against 64.4% for logistic regression (a drop of 0.036). F
+harmed both models in almost every batch. Because the alerts are identical for
+both models, the share of drift alerts on harmful batches fell from 0.119 for
+logistic regression to 0.072 [0.058, 0.088] for gradient boosting: the same
+alerts were even less informative about harm for the stronger model.
+
+### 4.10 Real shift across US states
+
+Table 6 shows the real-shift results. On stable California batches, drift
+detection alerted on 5.6% of batches after the change point. On real
+populations from every other state it alerted on every batch, from the first
+changed batch in every run. Race and place of birth drifted in every batch from
+every state; Puerto Rico also differed in every batch in occupation, marital
+status, class of worker, relationship and hours worked.
+
+**Table 6.** Real shift on ACSIncome: batches 8-15, 20 seeds, 95% confidence
+intervals.
+
+| Batches 8-15 from | Drift alerts | Harmed: logreg | Harmed: gbm | Mean ROC-AUC (logreg / gbm) |
+| --- | --- | --- | --- | --- |
+| California (stable) | 0.056 [0.031, 0.081] | 0.012 | 0.019 | 0.893 / 0.898 |
+| California, corrupted | 1.000 | 0.031 | 0.025 | 0.886 / 0.898 |
+| Texas | 1.000 | 0.144 [0.100, 0.188] | 0.175 [0.125, 0.225] | 0.876 / 0.882 |
+| New York | 1.000 | 0.262 [0.206, 0.319] | 0.325 [0.256, 0.394] | 0.870 / 0.875 |
+| Florida | 1.000 | 0.456 [0.388, 0.531] | 0.681 [0.619, 0.744] | 0.863 / 0.862 |
+| Puerto Rico | 1.000 | 0.875 [0.812, 0.938] | 0.875 [0.819, 0.925] | 0.838 / 0.839 |
+
+Harm differed widely between states that drift detection treated identically:
+logistic regression was harmed in one batch in seven from Texas and in seven
+in eight from Puerto Rico. Because every changed batch raised an alert, drift
+detection missed almost no harmful batch (283 of 285 for logistic regression,
+333 of 336 for gradient boosting), but only 32.6% [29.7, 35.7] of its alerts
+fell on batches harmful for logistic regression, and 38.3% [35.8, 40.9] for
+gradient boosting. The ranking of models also changed with the population:
+gradient boosting was harmed more often than logistic regression in Florida
+(68.1% against 45.6%), the reverse of Adult's marital-status shift.
+
+Real data also blurred the line between corruption and change. In every
+target state some rows were rejected because a category was absent from the
+California training data: 71 of the 10,000 New York residents (0.7%) had a
+place-of-birth code that never occurred among the 30,000 California training
+rows, and no other column had unseen values. Rejection rates averaged 0.2-0.3%
+of rows in Texas, Florida and Puerto Rico and 0.75% in New York, where 21
+batches, in 15 of 20 runs, crossed the 1% quality-alert threshold. These are
+valid answers that a schema learned from one population treats as invalid.
+
+### 4.11 Sensitivity to the harm threshold
+
+Table 7 repeats the main comparison with harm thresholds of 0.02 and 0.05.
+
+**Table 7.** Number of harmful batches, and share of drift alerts on harmful
+batches, at three harm thresholds (0.03 was fixed in advance).
+
+| Dataset | Model | Harmful batches (0.02 / 0.03 / 0.05) | Drift alerts on harmful batches (0.02 / 0.03 / 0.05) |
+| --- | --- | --- | --- |
+| Adult | Logistic regression | 463 / 289 / 157 | 0.201 / 0.119 / 0.027 |
+| Adult | Gradient boosting | 389 / 226 / 162 | 0.160 / 0.072 / 0.011 |
+| ACSIncome | Logistic regression | 463 / 285 / 117 | 0.491 / 0.326 / 0.135 |
+| ACSIncome | Gradient boosting | 482 / 336 / 144 | 0.518 / 0.383 / 0.166 |
+
+The central result is stable: at every threshold, for both models and both
+datasets, at most about half of drift alerts coincided with harm, and on Adult
+at most one in five. The label-relationship change (F) is harmful under all
+three rules (85-100% of batches for both models), while drift alerts on it
+stay at the false-alert rate. On ACSIncome, the ranking of states by harm
+(Texas < New York < Florida < Puerto Rico) is the same at every threshold for
+both models.
+
+The marital-status shift (D) is the exception. Its mean ROC-AUC falls by
+0.036 for logistic regression and 0.027 for gradient boosting, close to the
+thresholds themselves, so it is harmful in 90.0% / 64.4% / 13.1% of batches
+for logistic regression and 74.4% / 36.9% / 1.2% for gradient boosting at
+0.02 / 0.03 / 0.05. Whether a moderate shift counts as harmful therefore
+depends both on the model and on a threshold that has to be chosen in advance,
+which is a further reason a drift alert cannot settle the question on its own.
 
 ## 5. Discussion
 
-**H1: supported.** The quality gate caught every corrupted batch and named
-the cause. Drift detection alone also alerted, but for the wrong reason:
-corrupted values looked like a shift in one feature. An operator acting on
-those alerts would investigate the wrong problem.
+**H1 (corruption): supported.** On both datasets the quality gate caught
+every corrupted batch and named the cause. Drift detection alone also alerted,
+but for the wrong reason: corrupted values looked like a shift in one feature.
+An operator acting on those alerts would investigate the wrong problem. Real
+data adds a caveat: a schema learned from one population rejected valid
+answers from another, so a quality alert can also signal a new population.
 
-**H2: partly supported.** Combining the two methods did not improve detection
-or harm-finding; its alert decisions were identical to drift-only. Its value
-was diagnostic: it separated corruption from distribution change. We
-therefore do not find that combined monitoring wins on detection metrics.
+**H2 (combining monitors): partly supported.** Combining the two methods did
+not improve detection or harm-finding on either dataset; its alert decisions
+were identical to drift-only. Its value was diagnostic: it separated
+corruption from distribution change. We therefore do not find that combined
+monitoring wins on detection metrics.
 
-**H3: partly supported.** Shift type mattered: sudden shifts were caught at
-once, the gradual shift slightly later, and the label-relationship change not
-at all. Severity mattered less than expected for hours-per-week, where even
-the smallest shift was always detected, which suggests that detection depends
-on a feature's distribution shape as well as on the size of the shift.
+**H3 (change): partly supported.** Shift type mattered: sudden synthetic
+shifts and all four real populations were caught at once, the gradual shift
+about one batch later, and the label-relationship change not at all. Severity
+mattered less than expected for hours-per-week, where even the smallest shift
+was always detected, which suggests that detection depends on a feature's
+distribution shape as well as on the size of the shift.
 
-**H4: supported.** Most drift alerts did not coincide with harm: 85% fell on
-batches where the model performed normally. Feature monitoring could neither
-confirm harm, since it alerted equally on D, which was harmful, and on C and
-E, which were not, nor detect it, since it missed F. This is consistent with
-Podkopaev and Ramdas [2022] and supports measuring performance directly
-whenever labels become available.
+**H4 (change vs. harm): supported.** Most drift alerts did not coincide with
+harm: for logistic regression, 88% of drift alerts on Adult and 67% on
+ACSIncome fell on batches where the model performed normally. Feature
+monitoring could neither confirm harm, since it alerted equally on D, which
+was harmful, and on C and E, which were not, and equally on Texas and Puerto
+Rico; nor detect it, since it missed F. This is consistent with Podkopaev and
+Ramdas [2022] and supports measuring performance directly whenever labels
+become available.
+
+**Harm depends on the model, alerts do not.** Monitoring alerts are computed
+from the inputs alone, so they were identical for both models, yet the models
+disagreed about which changes harmed them: gradient boosting was harmed less
+than logistic regression by the marital-status shift and more by the Florida
+population. A drift alert describes the data; whether that data harms a
+particular model is a separate fact.
 
 **What separating the three questions shows.** Scored against input change
 alone, drift detection looks nearly perfect. Scored against corruption, it
@@ -434,8 +604,12 @@ alerts on every corrupted batch but names the wrong cause, a shift in one
 feature. Scored against harm, most of its alerts are on batches the model
 handles normally, and it misses the change that harms the model most. The
 same alerts support three different verdicts depending on which question is
-asked. Evaluations that report only the first, as is common for drift
-detectors, therefore say little about whether an operator should act.
+asked. The two datasets show this from opposite directions: on Adult, drift
+alerts missed the most harmful change; on real geographic shift, they caught
+every harmful batch but could not tell a mildly harmful population from a
+severely harmful one. Evaluations that report only detection, as is common
+for drift detectors, therefore say little about whether an operator should
+act.
 
 **Practical implication.** In a pipeline like this one, drift alerts are best
 treated as a prompt to check model performance rather than as evidence that
@@ -444,19 +618,24 @@ data is not mistaken for distribution change.
 
 ## 6. Limitations
 
-- We use one dataset (the 1994 US census), one model and one family of drift
-  tests, and results may not generalise beyond this setting [Ding et al. 2021].
-- All changes are synthetic; real shifts are often more complex.
-- Each scenario has five seeds. Scenario D samples from the whole monitor
-  pool, so its batches can repeat rows from other batches in the same run.
-- Harm is defined by a single ROC-AUC rule, and other rules could classify
-  batches differently. ROC-AUC itself depends on the mix of people in a batch,
-  so part of D's drop may reflect its changed population rather than a less
-  accurate model.
-- The paired design reuses base batches across scenarios. 12 of the 13
-  harmful batches outside D and F are two base batches repeated across
-  scenarios; one of them (ROC-AUC 0.8752) sits just below the 0.8756
-  threshold. The thirteenth is a corrupted batch in B.
+- Two datasets, both from US census income data (1994 and 2018), two model
+  families and one family of drift tests; other domains, models and detectors
+  may behave differently [Ding et al. 2021].
+- The Adult changes are synthetic. The ACSIncome shift is real but geographic
+  only and from a single year; temporal shift was not tested.
+- Harm is defined by a ROC-AUC rule. The sensitivity analysis shows the main
+  conclusions hold at 0.02 and 0.05, but whether D is harmful does not.
+  ROC-AUC itself depends on the mix of people in a batch, so part of a
+  measured drop under a population change, in D and in the ACSIncome states,
+  may reflect the new population rather than a less accurate model.
+- The paired design reuses base batches across scenarios. Of the 289 batches
+  harmful for logistic regression on Adult, 23 fall outside D and F; 18 of
+  these are three base batches repeated across the six scenarios that share
+  them. The confidence intervals resample whole seeds to account for this
+  dependence. Scenario D samples from the whole monitor pool, so its batches
+  can repeat rows from other batches in the same run.
+- The quality schema is learned from one population, so valid but unseen
+  categories in a new population are rejected as invalid.
 - The KS test is conservative for features with many tied values, such as
   capital-gain and capital-loss, which are mostly zero.
 - The combined strategy uses no performance signal, since labels are rarely
@@ -465,28 +644,33 @@ data is not mistaken for distribution change.
 
 ## 7. Conclusion and future work
 
-In a controlled experiment on a tabular pipeline, statistical drift detection
-reliably detected changes in input data but was a poor indicator of model
-harm: most of its alerts were on harmless changes, and the most harmful
-change produced no alerts. A data-quality gate added nothing to detection but
-correctly separated corrupted data from genuine distribution change.
+On a controlled and a real-shift benchmark, with two model families,
+statistical drift detection reliably detected changes in input data but was a
+poor indicator of model harm. On controlled shifts, most of its alerts were on
+harmless changes and the most harmful change produced no alerts; on real
+populations, it alerted on everything and could not distinguish mild from
+severe harm. Which changes were harmful depended on the model, under
+identical alerts. A data-quality gate added nothing to detection but correctly
+separated corrupted data from genuine distribution change.
 
-Future work should repeat the experiment on real temporal and geographic
-shifts using Folktables or TableShift, test strategies that use delayed labels
-to monitor performance directly, and compare sensitivity across drift
-thresholds and multiple-testing corrections.
+Future work should test temporal shift (for example, ACSIncome across survey
+years), strategies that use delayed labels to monitor performance directly,
+and other drift detectors and multiple-testing corrections.
 
 ## Reproducibility
 
 Code, configuration and results are available at
-https://github.com/alishba25/driftguard. The experiment configuration
-(experiments/configs/main.yaml) was fixed before the first run.
-`python experiments/run_experiments.py` reruns all 640 batches, and
-`python experiments/summarize.py` and `python experiments/make_figures.py`
-rebuild every table and figure. A local rerun and an independent Docker rerun,
-with a fresh data download and model training, reproduced all batch results
-exactly. Exact library versions are recorded in requirements-lock.txt and
-requirements-lock-docker.txt.
+https://github.com/alishba25/driftguard. Each experiment's configuration
+(experiments/configs/main.yaml, adult_20seeds.yaml and acs_states.yaml) was
+committed before its first run. `python experiments/run_experiments.py
+<config>` reruns an experiment; `experiments/summarize.py`,
+`experiments/analyze.py` and `experiments/make_figures.py` rebuild every
+table, confidence interval and figure; and `src/prepare_acs.py` downloads and
+prepares the ACSIncome data. The original five-seed experiment was reproduced
+exactly by a local rerun and an independent Docker rerun with a fresh data
+download and model training, and its 640 batches are identical to seeds 0-4
+of the 20-seed experiment. Exact library versions are recorded in
+requirements-lock.txt and requirements-lock-docker.txt.
 
 ## References
 
@@ -519,3 +703,35 @@ Schelter, S., Lange, D., Schmidt, P., Celikel, M., Biessmann, F., & Grafberger, 
 Sculley, D., Holt, G., Golovin, D., Davydov, E., Phillips, T., Ebner, D., Chaudhary, V., Young, M., Crespo, J.-F., & Dennison, D. (2015). Hidden technical debt in machine learning systems. In *Advances in Neural Information Processing Systems 28*.
 
 Virtanen, P., et al. (2020). SciPy 1.0: Fundamental algorithms for scientific computing in Python. *Nature Methods*, 17.
+
+---
+
+## Appendix
+
+**Table A1.** Adult, per scenario: batches 8-15 over 20 seeds, with 95%
+confidence intervals.
+
+| Scenario | Drift alerts | Harmed: logreg | Harmed: gbm | Mean ROC-AUC (logreg / gbm) |
+| --- | --- | --- | --- | --- |
+| A_stable | 0.056 [0.019, 0.094] | 0.006 [0.000, 0.019] | 0.006 [0.000, 0.019] | 0.906 / 0.930 |
+| B_corruption | 1.000 | 0.038 [0.013, 0.063] | 0.006 [0.000, 0.019] | 0.902 / 0.929 |
+| C_shift_low | 1.000 | 0.006 [0.000, 0.019] | 0.000 | 0.907 / 0.930 |
+| C_shift_mid | 1.000 | 0.006 [0.000, 0.019] | 0.006 [0.000, 0.019] | 0.907 / 0.929 |
+| C_shift_high | 1.000 | 0.006 [0.000, 0.019] | 0.013 [0.000, 0.031] | 0.907 / 0.927 |
+| D_sudden | 1.000 | 0.644 [0.556, 0.731] | 0.369 [0.294, 0.444] | 0.870 / 0.902 |
+| E_gradual | 0.875 [0.850, 0.900] | 0.006 [0.000, 0.019] | 0.013 [0.000, 0.031] | 0.906 / 0.927 |
+| F_concept | 0.056 [0.019, 0.094] | 0.994 [0.981, 1.000] | 1.000 | 0.839 / 0.844 |
+
+![Figure A1](figures/adult_20seeds_alerts_vs_harm_gbm.png)
+
+**Figure A1.** As Figure 3, for gradient boosting.
+
+![Figure A2](figures/acs_states_alerts_vs_harm_logreg.png)
+
+**Figure A2.** Real shift on ACSIncome: share of batches after the change
+point that raised a drift alert and that harmed logistic regression, with 95%
+confidence intervals over 20 seeds.
+
+![Figure A3](figures/acs_states_alerts_vs_harm_gbm.png)
+
+**Figure A3.** As Figure A2, for gradient boosting.
